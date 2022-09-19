@@ -92,7 +92,7 @@
 	  MT_ACCEL = 35.0	- Max acceleration provided by the main thruster
 	  RT_ACCEL = 25.0	- Max acceleration provided by right thruster
 	  LT_ACCEL = 25.0	- Max acceleration provided by left thruster
-          MAX_ROT_RATE = .075    - Maximum rate of rotation (in radians) per unit time
+          MAX_ROT_RATE = .075    - Maximum rate of rotation (in radians) per unit time #### how does this relate to ticks? is it per tick? ####
 
 	- Functions you need to analyze and possibly change
 
@@ -159,6 +159,7 @@
   Standard C libraries
 */
 #include <math.h>
+#include <stdio.h>
 
 #include "Lander_Control.h"
 
@@ -254,6 +255,9 @@ void Lander_Control(void)
 
  // Module is oriented properly, check for horizontal position
  // and set thrusters appropriately.
+ // #######################################
+ // lander is on the right of the platform. left thruster, means the thruster on the left pushing the lander to the right
+ // #######################################
  if (Position_X()>PLAT_X)
  {
   // Lander is to the LEFT of the landing platform, use Right thrusters to move
@@ -264,6 +268,9 @@ void Lander_Control(void)
   {
    // Exceeded velocity limit, brake
    Right_Thruster(0);
+   // ##################
+   // Possible typo or bug since input > 1 
+   // ##################
    Left_Thruster(fabs(VXlim-Velocity_X()));
   }
  }
@@ -330,7 +337,7 @@ void Safety_Override(void)
 
  // If we're close to the landing platform, disable
  // safety override (close to the landing platform
- // the Control_Policy() should be trusted to
+ // the Control_Policy() ##### Lander_Control? #####should be trusted to
  // safely land the craft)
  if (fabs(PLAT_X-Position_X())<150&&fabs(PLAT_Y-Position_Y())<150) return;
 
@@ -389,7 +396,7 @@ void Safety_Override(void)
   for (int i=14; i<22; i++)
    if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
  }
- if (dmin<DistLimit)   // Too close to a surface in the horizontal direction
+ if (dmin<DistLimit)   // Too close to a surface in the horizontal #### vertical #### direction
  {
   if (Angle()>1||Angle()>359)
   {
