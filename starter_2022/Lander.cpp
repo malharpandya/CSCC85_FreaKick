@@ -42,7 +42,7 @@
 	  Position Y();  - Gives you the lander's vertical position (0 to 1024)
 
           Angle();	 - Gives the lander's angle w.r.t. vertical in DEGREES (upside-down = 180 degrees)
-
+    ####### all angle has the frame of reference of Venus
 	  SONAR_DIST[];  - Array with distances obtained by sonar. Index corresponds
                            to angle w.r.t. vertical direction measured clockwise, so that
                            SONAR_DIST[0] is distance at 0 degrees (pointing upward)
@@ -78,7 +78,7 @@
 	  Main_Thruster(double power);   - Sets main thurster power in [0 1], 0 is off
 	  Left_Thruster(double power);	 - Sets left thruster power in [0 1]
 	  Right_Thruster(double power);  - Sets right thruster power in [0 1]
-	  Rotate(double angle);	 	 - Rotates module 'angle' degrees clockwise
+	  Rotate(double angle);	 	 - Rotates module 'angle' degrees clockwise  ###  Can it be failing  ###
 					   (ccw if angle is negative) from current
                                            orientation (i.e. rotation is not w.r.t.
                                            a fixed reference direction).
@@ -160,8 +160,22 @@
 */
 #include <math.h>
 #include <stdio.h>
+#include <queue>
 
 #include "Lander_Control.h"
+
+using namespace std;
+
+int VEL_X_OK = 1;
+int VEL_Y_OK = 1;
+int POS_X_OK = 1;
+int POS_Y_OK = 1;
+int ANGLE_OK = 1;
+int SONAR_OK = 1;
+bool setup = 1;
+deque<double> VEL_X;
+deque<double> VEL_Y;
+
 
 void Lander_Control(void)
 {
@@ -214,6 +228,12 @@ void Lander_Control(void)
         ACCESS THE SIMULATION STATE. That's cheating,
         I'll give you zero.
 **************************************************/
+ 
+ if (setup) {
+
+ }
+
+ Denoised_Velocity_X();
 
  double VXlim;
  double VYlim;
@@ -223,6 +243,7 @@ void Lander_Control(void)
  // move faster, decrease speed limits as the module
  // approaches landing. You may need to be more conservative
  // with velocity limits when things fail.
+ 
  if (fabs(Position_X()-PLAT_X)>200) VXlim=25;
  else if (fabs(Position_X()-PLAT_X)>100) VXlim=15;
  else VXlim=5;
@@ -260,8 +281,8 @@ void Lander_Control(void)
  // #######################################
  if (Position_X()>PLAT_X)
  {
-  // Lander is to the LEFT of the landing platform, use Right thrusters to move
-  // lander to the left.
+  // Lander is to the LEFT of the landing platform, use left thrusters to move
+  // lander to the right.
   Left_Thruster(0);	// Make sure we're not fighting ourselves here!
   if (Velocity_X()>(-VXlim)) Right_Thruster((VXlim+fmin(0,Velocity_X()))/VXlim);
   else
@@ -292,6 +313,71 @@ void Lander_Control(void)
  if (Velocity_Y()<VYlim) Main_Thruster(1.0);
  else Main_Thruster(0);
 }
+
+void preprocessing();
+
+double Denoised_Velocity_X(void)
+{
+  double dVx;
+  double numFaultyReads = 0;
+
+  if (!VEL_X_OK)
+  {
+    return 0; // Try to get vel some different way
+  }
+
+  if (VEL_X.size() == DENOISING_SIZE){
+    VEL_X.pop_front();
+  }
+  VEL_X.push_back(Velocity_X()); // Call something else if Velocity_X is faulty
+
+  for (int i = 0; i < VEL_X.size(); i++){
+    dVx += VEL_X.at(i); // indexing with .at() starts at 0
+    //find faulty sensor
+    if (i != 0 && abs(VEL_X.at(i)-VEL_X.at(i-1) > 0.2)){
+      numFaultyReads++;
+      printf("1");
+      // printf("VEL_X out of bound %f \n", abs(VEL_X.at(i)-VEL_X.at(i-1)));
+    } else {
+      printf("0");
+    }
+  }
+  // if (numFaultyReads >= FAULT_TOLERANCE) {
+  //   VEL_X_OK = 0;
+  // }
+  return dVx/VEL_X.size();
+}
+
+double Denoised_Velocity_Y(void)
+{
+  double dVy;
+  double numFaultyReads = 0;
+
+  if (!VEL_Y_OK)
+  {
+    return 0; // Try to get vel some different way
+  }
+
+  if (VEL_Y.size() == DENOISING_SIZE){
+    VEL_Y.pop_front();
+  }
+  VEL_Y.push_back(Velocity_Y()); // Call something else if Velocity_X is faulty
+
+  for (int i = 0; i < VEL_Y.size(); i++){
+    dVy += VEL_Y.at(i); // indexing with .at() starts at 0
+    //find faulty sensor
+    if (i != 0 && abs(VEL_Y.at(i)-VEL_Y.at(i-1))){numFaultyReads++;} 
+  }
+  if (numFaultyReads >= FAULT_TOLERANCE) {
+    VEL_Y_OK = 0;
+  }
+  return dVy/VEL_X.size();
+}
+
+double Denoised_Position_X(void);
+double Denoised_Position_Y(void);
+double Denoised_Angle(void);
+double Denposed_RangeDist(void);
 
 void Safety_Override(void)
 {
