@@ -42,7 +42,7 @@
 	  Position Y();  - Gives you the lander's vertical position (0 to 1024)
 
           Angle();	 - Gives the lander's angle w.r.t. vertical in DEGREES (upside-down = 180 degrees)
-    ####### all angle has the frame of reference of Venus
+
 	  SONAR_DIST[];  - Array with distances obtained by sonar. Index corresponds
                            to angle w.r.t. vertical direction measured clockwise, so that
                            SONAR_DIST[0] is distance at 0 degrees (pointing upward)
@@ -78,7 +78,7 @@
 	  Main_Thruster(double power);   - Sets main thurster power in [0 1], 0 is off
 	  Left_Thruster(double power);	 - Sets left thruster power in [0 1]
 	  Right_Thruster(double power);  - Sets right thruster power in [0 1]
-	  Rotate(double angle);	 	 - Rotates module 'angle' degrees clockwise  ###  Can it be failing  ###
+	  Rotate(double angle);	 	 - Rotates module 'angle' degrees clockwise
 					   (ccw if angle is negative) from current
                                            orientation (i.e. rotation is not w.r.t.
                                            a fixed reference direction).
@@ -92,7 +92,7 @@
 	  MT_ACCEL = 35.0	- Max acceleration provided by the main thruster
 	  RT_ACCEL = 25.0	- Max acceleration provided by right thruster
 	  LT_ACCEL = 25.0	- Max acceleration provided by left thruster
-          MAX_ROT_RATE = .075    - Maximum rate of rotation (in radians) per unit time #### how does this relate to ticks? is it per tick? ####
+          MAX_ROT_RATE = .075    - Maximum rate of rotation (in radians) per unit time
 
 	- Functions you need to analyze and possibly change
 
@@ -158,83 +158,249 @@
 /*
   Standard C libraries
 */
+
 #include <math.h>
-#include <stdio.h>
 #include <queue>
 
 #include "Lander_Control.h"
 
 using namespace std;
 
-int VEL_X_OK = 1;
-int VEL_Y_OK = 1;
-int POS_X_OK = 1;
-int POS_Y_OK = 1;
-int ANGLE_OK = 1;
-int SONAR_OK = 1;
-bool setup = 1;
-deque<double> VEL_X;
-deque<double> VEL_Y;
+// TICK COUNTER
+double COUNTER = 0;
+// BOOLEAN FLAGS
+bool POS_X_OK = 1;
+bool POS_Y_OK = 1;
+bool VEL_X_OK = 1;
+bool VEL_Y_OK = 1;
+bool ANGLE_OK = 1;
+bool SONAR_OK = 1;
+
+// SENSOR RANGE OF RELIABILITY *JACKSON*
+double POS_X_Range = -1;
+double POS_Y_Range = -1;
+double VEL_X_Range = 2;
+double VEL_Y_Range = -1;
+double ANGLE_Range = -1;
+double SONAR_Range = -1;
+
+// SENSOR DATA
+int DATA_SIZE = 10;
+deque<double> POS_X_DATA;
+deque<double> POS_Y_DATA;
+deque<double> VEL_X_DATA;
+deque<double> VEL_Y_DATA;
+deque<double> ANGLE_DATA;
+deque<double> SONAR_DATA[36];
+
+// CONTROL DATA
+// NOTE: since angle and thruster commands are mutually exclusive, fill in -1 for thruster data when changing angle and vice versa
+double MT_DATA; // [0 ,1]
+double LT_DATA; // [0 ,1]
+double RT_DATA; // [0 ,1]
+double ROTATE_DATA; // 0 if not rotating, or howewer much is left to rotate (in degrees) in which case all thrusters are 0
+
+// HELPERS
 
 
-void Lander_Control(void)
-{
- /*
-   This is the main control function for the lander. It attempts
-   to bring the ship to the location of the landing platform
-   keeping landing parameters within the acceptable limits.
+// SIMULATE CURRENT VALUES USING PAST TICK VALUE AND COMMAND GIVEN
+double* Simulate(double* address) {
+  // DON'T CALL Simulate ON FIRST ITERATION as we have no previous data
+  double PPX = POS_X_DATA[0];
+  double PPY = POS_Y_DATA[0];
+  double PVX = VEL_X_DATA[0];
+  double PVY = VEL_Y_DATA[0];
+  double PA = ANGLE_DATA[0];
+  double AX = MT_ACCEL*MT_DATA*sin(PA) + (LT_ACCEL*LT_DATA - RT_ACCEL*RT_DATA)*cos(PA); // 0 if in rotation
+  double AY = (G_ACCEL - MT_ACCEL*MT_DATA*cos(PA)) + (LT_ACCEL*LT_DATA - RT_ACCEL*RT_DATA)*sin(PA); // G if in rotation
+  double DX = PVX*T_STEP + 0.5*AX*T_STEP*T_STEP;
+  double DY = PVY*T_STEP + 0.5*AY*T_STEP*T_STEP;
+  double CPX = PPX + DX;
+  double CPY = PPY + DY;
+  double CVX = PVX + AX*T_STEP;
+  double CVY = PVY + AY*T_STEP;
+  double CA = PA + ROTATE_DATA; // Need to account for max rotate rate
+  double max_rotate_degrees = MAX_ROT_RATE*180/PI;
+  int sign = (ROTATE_DATA > 0) - (ROTATE_DATA < 0); // 1 if positive, -1 if negative, 0 if 0
+  if (abs(ROTATE_DATA) > max_rotate_degrees) {
+    CA = PA + sign*max_rotate_degrees;
+  }
+  address[0] = CPX;
+  address[1] = CPY;
+  address[2] = CVX;
+  address[3] = CVY;
+  address[4] = CA;
+  return address;
+}
 
-   How it works:
+// GET CURRENT READING EXCEPT SONAR
+double* Get_Current_Readings(double* address) {
+  /*
+      Given an array (pointer), fill it with sensor readings
+      WARNING: initialize array "address" with the right size (6)
+  */
+  address[0] = Position_X();
+  address[1] = Position_Y();
+  address[2] = Velocity_X();
+  address[3] = Velocity_Y();
+  address[4] = Angle();
+  return address;
+}
 
-   - First, if the lander is rotated away from zero-degree angle,
-     rotate lander back onto zero degrees.
-   - Determine the horizontal distance between the lander and
-     the platform, fire horizontal thrusters appropriately
-     to change the horizontal velocity so as to decrease this
-     distance
-   - Determine the vertical distance to landing platform, and
-     allow the lander to descend while keeping the vertical
-     speed within acceptable bounds. Make sure that the lander
-     will not hit the ground before it is over the platform!
+// FAULT DETECTION
+void Update_Sensor_Status(void) {
+  /*
+      Update global flags of sensors statuses based on current reading and previous reading (prior Tick) stored in the global array
+  */
+  if (COUNTER == 0) {return;}
+  double Current_Readings[6];
+  double* Current = Get_Current_Readings(Current_Readings);
+  if (POS_X_OK)
+  {
+    if (abs(Current[0] - POS_X_DATA[0]) > POS_X_Range) 
+    {
+      POS_X_OK = 0;
+    }
+  }
+  if (POS_Y_OK)
+  {
+    if (abs(Current[1] - POS_Y_DATA[0]) > POS_Y_Range) 
+    {
+      POS_Y_OK = 0;
+    }
+  }
+  if (VEL_X_OK)
+  {
+    if (abs(Current[2] - VEL_X_DATA[0]) > VEL_X_Range) 
+    {
+      VEL_X_OK = 0;
+    }
+  }
+  if (VEL_Y_OK)
+  {
+    if (abs(Current[3] - VEL_Y_DATA[0]) > VEL_Y_Range) 
+    {
+      VEL_Y_OK = 0;
+    }
+  }
+  if (ANGLE_OK)
+  {
+    if (abs(Current[4] - ANGLE_DATA[0]) > ANGLE_Range) 
+    {
+      ANGLE_OK = 0;
+    }
+  }
+  // FIGURE SONAR STATUS
+  return;
+}
 
-   As noted above, this function assumes everything is working
-   fine.
-*/
+// DENOISING
+double Denoise_Position_X(void) {
+  return -1;
+}
 
-/*************************************************
- TO DO: Modify this function so that the ship safely
-        reaches the platform even if components and
-        sensors fail!
+double Denoise_Position_Y(void) {
+  return -1;
+}
 
-        Note that sensors are noisy, even when
-        working properly.
+double Denoise_Velocity_X(void) {
+  return -1;
+}
 
-        Finally, YOU SHOULD provide your own
-        functions to provide sensor readings,
-        these functions should work even when the
-        sensors are faulty.
+double Denoise_Velocity_Y(void) {
+  return -1;
+}
 
-        For example: Write a function Velocity_X_robust()
-        which returns the module's horizontal velocity.
-        It should determine whether the velocity
-        sensor readings are accurate, and if not,
-        use some alternate method to determine the
-        horizontal velocity of the lander.
+double Denoise_Angle(void) {
+  return -1;
+}
 
-        NOTE: Your robust sensor functions can only
-        use the available sensor functions and control
-        functions!
-	DO NOT WRITE SENSOR FUNCTIONS THAT DIRECTLY
-        ACCESS THE SIMULATION STATE. That's cheating,
-        I'll give you zero.
-**************************************************/
- 
- if (setup) {
+// ROBUST READINGS
+double Robust_Position_X(double* simulation) {
+  if (POS_X_OK) {
+    return Denoise_Position_X();
+  }
+  if (VEL_X_OK) {
+    return POS_X_DATA[0] + (T_STEP * VEL_X_DATA[0]);
+  }
+  return simulation[0];
+}
 
- }
+double Robust_Position_Y(double* simulation) {
+  if (POS_Y_OK) {
+    return Denoise_Position_Y();
+  }
+  if (VEL_Y_OK) {
+    return POS_Y_DATA[0] + (T_STEP * VEL_Y_DATA[0]);
+  }
+  return simulation[1];
+}
 
- Denoised_Velocity_X();
+double Robust_Velocity_X(double* simulation) {
+  if (VEL_X_OK) {
+    return Denoise_Velocity_X();
+  }
+  if (POS_X_OK) {
+    return (Position_X() - POS_X_DATA[0])/T_STEP;
+  }
+  return simulation[2];
+}
 
+double Robust_Velocity_Y(double* simulation) {
+  if (VEL_Y_OK) {
+    return Denoise_Velocity_Y();
+  }
+  if (POS_Y_OK) {
+    return (Position_Y() - POS_Y_DATA[0])/T_STEP;
+  }
+  return simulation[3];
+}
+
+double Robust_Angle(double* simulation) {
+  if (ANGLE_OK) {
+    return Denoise_Angle();
+  }
+  return simulation[4];
+}
+// DATA UPDATING
+void Update_Data_Lists(void) {
+  // Generate Simulation
+  double simulate[6];
+  double* simulation = Simulate(simulate);
+  POS_X_DATA.push_front(Robust_Position_X(simulate));
+  if (POS_X_DATA.size() == DATA_SIZE + 1){
+    POS_X_DATA.pop_back();
+  }
+  POS_Y_DATA.push_front(Robust_Position_Y(simulate));
+  if (POS_Y_DATA.size() == DATA_SIZE + 1){
+    POS_Y_DATA.pop_back();
+  }
+  VEL_X_DATA.push_front(Robust_Velocity_X(simulate));
+  if (VEL_X_DATA.size() == DATA_SIZE + 1){
+    VEL_X_DATA.pop_back();
+  }
+  VEL_Y_DATA.push_front(Robust_Velocity_Y(simulate));
+  if (VEL_Y_DATA.size() == DATA_SIZE + 1){
+    VEL_Y_DATA.pop_back();
+  }
+  ANGLE_DATA.push_front(Robust_Angle(simulate));
+  if (ANGLE_DATA.size() == DATA_SIZE + 1){
+    ANGLE_DATA.pop_back();
+  }
+  /* Wait for robust sonar data to be finished
+  SONAR_DATA.push_front(SONAR_DIST[]);
+  if (SONAR_DATA.size() == DATA_SIZE + 1){
+    SONAR_DATA.pop_back();
+  }
+  */
+}
+
+void Lander_Control(void) {
+  // call the sensor status and update sensors
+  // update the data based on robust calls
+  // use global data arrays[-1] to decide where to go
+  // store comands given to global (keep all thruster commands between [0.1, 0.9] and keep exclusive from rotation in which case thuster power should be 0)
+  // add 1 to Tick counter at the very end of the code
  double VXlim;
  double VYlim;
 
@@ -243,7 +409,9 @@ void Lander_Control(void)
  // move faster, decrease speed limits as the module
  // approaches landing. You may need to be more conservative
  // with velocity limits when things fail.
- 
+  
+ // Call Sensor_Status() then Update_Data_Lists() here
+  
  if (fabs(Position_X()-PLAT_X)>200) VXlim=25;
  else if (fabs(Position_X()-PLAT_X)>100) VXlim=15;
  else VXlim=5;
@@ -276,22 +444,16 @@ void Lander_Control(void)
 
  // Module is oriented properly, check for horizontal position
  // and set thrusters appropriately.
- // #######################################
- // lander is on the right of the platform. left thruster, means the thruster on the left pushing the lander to the right
- // #######################################
  if (Position_X()>PLAT_X)
  {
-  // Lander is to the LEFT of the landing platform, use left thrusters to move
-  // lander to the right.
+  // Lander is to the LEFT of the landing platform, use Right thrusters to move
+  // lander to the left.
   Left_Thruster(0);	// Make sure we're not fighting ourselves here!
   if (Velocity_X()>(-VXlim)) Right_Thruster((VXlim+fmin(0,Velocity_X()))/VXlim);
   else
   {
    // Exceeded velocity limit, brake
    Right_Thruster(0);
-   // ##################
-   // Possible typo or bug since input > 1 
-   // ##################
    Left_Thruster(fabs(VXlim-Velocity_X()));
   }
  }
@@ -314,73 +476,7 @@ void Lander_Control(void)
  else Main_Thruster(0);
 }
 
-void preprocessing();
-
-double Denoised_Velocity_X(void)
-{
-  double dVx;
-  double numFaultyReads = 0;
-
-  if (!VEL_X_OK)
-  {
-    return 0; // Try to get vel some different way
-  }
-
-  if (VEL_X.size() == DENOISING_SIZE){
-    VEL_X.pop_front();
-  }
-  VEL_X.push_back(Velocity_X()); // Call something else if Velocity_X is faulty
-
-  for (int i = 0; i < VEL_X.size(); i++){
-    dVx += VEL_X.at(i); // indexing with .at() starts at 0
-    //find faulty sensor
-    if (i != 0 && abs(VEL_X.at(i)-VEL_X.at(i-1) > 0.2)){
-      numFaultyReads++;
-      printf("1");
-      // printf("VEL_X out of bound %f \n", abs(VEL_X.at(i)-VEL_X.at(i-1)));
-    } else {
-      printf("0");
-    }
-  }
-  // if (numFaultyReads >= FAULT_TOLERANCE) {
-  //   VEL_X_OK = 0;
-  // }
-  return dVx/VEL_X.size();
-}
-
-double Denoised_Velocity_Y(void)
-{
-  double dVy;
-  double numFaultyReads = 0;
-
-  if (!VEL_Y_OK)
-  {
-    return 0; // Try to get vel some different way
-  }
-
-  if (VEL_Y.size() == DENOISING_SIZE){
-    VEL_Y.pop_front();
-  }
-  VEL_Y.push_back(Velocity_Y()); // Call something else if Velocity_X is faulty
-
-  for (int i = 0; i < VEL_Y.size(); i++){
-    dVy += VEL_Y.at(i); // indexing with .at() starts at 0
-    //find faulty sensor
-    if (i != 0 && abs(VEL_Y.at(i)-VEL_Y.at(i-1))){numFaultyReads++;} 
-  }
-  if (numFaultyReads >= FAULT_TOLERANCE) {
-    VEL_Y_OK = 0;
-  }
-  return dVy/VEL_X.size();
-}
-
-double Denoised_Position_X(void);
-double Denoised_Position_Y(void);
-double Denoised_Angle(void);
-double Denposed_RangeDist(void);
-
-void Safety_Override(void)
-{
+void Safety_Override(void) {
  /*
    This function is intended to keep the lander from
    crashing. It checks the sonar distance array,
@@ -423,7 +519,7 @@ void Safety_Override(void)
 
  // If we're close to the landing platform, disable
  // safety override (close to the landing platform
- // the Control_Policy() ##### Lander_Control? #####should be trusted to
+ // the Control_Policy() should be trusted to
  // safely land the craft)
  if (fabs(PLAT_X-Position_X())<150&&fabs(PLAT_Y-Position_Y())<150) return;
 
@@ -482,7 +578,7 @@ void Safety_Override(void)
   for (int i=14; i<22; i++)
    if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
  }
- if (dmin<DistLimit)   // Too close to a surface in the horizontal #### vertical #### direction
+ if (dmin<DistLimit)   // Too close to a surface in the horizontal direction
  {
   if (Angle()>1||Angle()>359)
   {
