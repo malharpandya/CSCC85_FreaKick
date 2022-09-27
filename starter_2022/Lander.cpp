@@ -164,6 +164,8 @@
 #include <iostream>
 
 #include "Lander_Control.h"
+#include <cstdio>
+
 
 using namespace std;
 
@@ -381,17 +383,6 @@ double Robust_Angle(double* simulation) {
 }
 // DATA UPDATING
 void Update(void) {
-  if(COUNTER == 0)
-  {
-    POS_X_DATA.push_front(Position_X());
-    POS_Y_DATA.push_front(Position_Y());
-    VEL_X_DATA.push_front(Velocity_X());
-    VEL_Y_DATA.push_front(Velocity_Y());
-    ANGLE_DATA.push_front(Angle());
-    return;
-  }
-  Update_Sensor_Status();
-  // Generate Simulation
   
   if (COUNTER == 0)
   {
@@ -443,8 +434,7 @@ void Lander_Control(void) {
   // use global data arrays[-1] to decide where to go
   // store comands given to global (keep all thruster commands between [0.1, 0.9] and keep exclusive from rotation in which case thuster power should be 0)
   // add 1 to Tick counter at the very end of the code
-  Update();
-  COUNTER++;
+
  double VXlim;
  double VYlim;
 
