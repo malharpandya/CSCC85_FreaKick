@@ -161,6 +161,7 @@
 
 #include <math.h>
 #include <queue>
+#include <iostream>
 
 #include "Lander_Control.h"
 
@@ -199,6 +200,10 @@ double MT_DATA; // [0 ,1]
 double LT_DATA; // [0 ,1]
 double RT_DATA; // [0 ,1]
 double ROTATE_DATA; // 0 if not rotating, or howewer much is left to rotate (in degrees) in which case all thrusters are 0
+
+// DENOISING VECTORS
+double WEIGHT_ARR [10];
+double SD = 1;
 
 // HELPERS
 
@@ -247,12 +252,27 @@ double* Get_Current_Readings(double* address) {
   return address;
 }
 
+// WEIGHTED ARRAY CREATION
+double normalCDF(double value)
+{
+   return 0.5 * erfc(-value * sqrt(0.5));
+}
+
+void createWeightedArr(void)
+{
+  for (int i = 0; i < 10; i++)
+  {
+    WEIGHT_ARR[i] = normalCDF(-i/SD);
+    cout << WEIGHT_ARR[i] << "\n";
+  }
+  
+}
+
 // FAULT DETECTION
 void Update_Sensor_Status(void) {
   /*
       Update global flags of sensors statuses based on current reading and previous reading (prior Tick) stored in the global array
   */
-  if (COUNTER == 0) {return;}
   double Current_Readings[6];
   double* Current = Get_Current_Readings(Current_Readings);
   if (POS_X_OK)
@@ -295,30 +315,21 @@ void Update_Sensor_Status(void) {
 }
 
 // DENOISING
-double Denoise_Position_X(void) {
-  return -1;
-}
-
-double Denoise_Position_Y(void) {
-  return -1;
-}
-
-double Denoise_Velocity_X(void) {
-  return -1;
-}
-
-double Denoise_Velocity_Y(void) {
-  return -1;
-}
-
-double Denoise_Angle(void) {
-  return -1;
+double Denoise(deque <double> DATA) {
+  int DATA_LIST_SIZE = DATA.size();
+  double AVERAGE = 0;
+  for (int i = 0; i < DATA_LIST_SIZE; i++)
+  {
+    AVERAGE += DATA.at(i) * WEIGHT_ARR[i];
+  }
+  
+  return AVERAGE;
 }
 
 // ROBUST READINGS
 double Robust_Position_X(double* simulation) {
   if (POS_X_OK) {
-    return Denoise_Position_X();
+    return Denoise(POS_X_DATA);
   }
   if (VEL_X_OK) {
     return POS_X_DATA[0] + (T_STEP * VEL_X_DATA[0]);
@@ -328,7 +339,7 @@ double Robust_Position_X(double* simulation) {
 
 double Robust_Position_Y(double* simulation) {
   if (POS_Y_OK) {
-    return Denoise_Position_Y();
+    return Denoise(POS_Y_DATA);
   }
   if (VEL_Y_OK) {
     return POS_Y_DATA[0] + (T_STEP * VEL_Y_DATA[0]);
@@ -338,7 +349,7 @@ double Robust_Position_Y(double* simulation) {
 
 double Robust_Velocity_X(double* simulation) {
   if (VEL_X_OK) {
-    return Denoise_Velocity_X();
+    return Denoise(VEL_X_DATA);
   }
   if (POS_X_OK) {
     return (Position_X() - POS_X_DATA[0])/T_STEP;
@@ -348,7 +359,7 @@ double Robust_Velocity_X(double* simulation) {
 
 double Robust_Velocity_Y(double* simulation) {
   if (VEL_Y_OK) {
-    return Denoise_Velocity_Y();
+    return Denoise(VEL_Y_DATA);
   }
   if (POS_Y_OK) {
     return (Position_Y() - POS_Y_DATA[0])/T_STEP;
@@ -358,13 +369,28 @@ double Robust_Velocity_Y(double* simulation) {
 
 double Robust_Angle(double* simulation) {
   if (ANGLE_OK) {
-    return Denoise_Angle();
+    return Denoise(ANGLE_DATA);
   }
   return simulation[4];
 }
 // DATA UPDATING
-void Update_Data_Lists(void) {
+void Update(void) {
   // Generate Simulation
+  
+  if (COUNTER == 0)
+  {
+    // Create weight array for Gaussian averaging
+    createWeightedArr();
+
+    // No need for simulation or sensor status update, all sensors are reliable
+    POS_X_DATA.push_front(Position_X());
+    POS_Y_DATA.push_front(Position_Y());
+    VEL_X_DATA.push_front(Velocity_X());
+    VEL_Y_DATA.push_front(Velocity_Y());
+    ANGLE_DATA.push_front(Angle());
+    return;
+  }
+  Update_Sensor_Status();
   double simulate[6];
   double* simulation = Simulate(simulate);
   POS_X_DATA.push_front(Robust_Position_X(simulate));
@@ -401,6 +427,8 @@ void Lander_Control(void) {
   // use global data arrays[-1] to decide where to go
   // store comands given to global (keep all thruster commands between [0.1, 0.9] and keep exclusive from rotation in which case thuster power should be 0)
   // add 1 to Tick counter at the very end of the code
+  Update();
+  COUNTER++;
  double VXlim;
  double VYlim;
 
