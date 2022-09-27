@@ -203,8 +203,8 @@ double LT_DATA; // [0 ,1]
 double RT_DATA; // [0 ,1]
 double ROTATE_DATA; // 0 if not rotating, or howewer much is left to rotate (in degrees) in which case all thrusters are 0
 
-// DENOISING VECTORS
-double WEIGHT_ARR [10];
+// DENOISING VECTOR
+double WEIGHT_ARR [9];
 double SD = 1;
 
 // HELPERS
@@ -255,17 +255,17 @@ double* Get_Current_Readings(double* address) {
 }
 
 // WEIGHTED ARRAY CREATION
-double normalCDF(double value)
+double Normal_CDF(double value)
 {
    return 0.5 * erfc(-value * sqrt(0.5));
 }
 
-void createWeightedArr(void)
+void Create_Weighted_Arr(void)
 {
-  for (int i = 0; i < 10; i++)
+  for (int i = 1; i < DATA_SIZE; i++)
   {
-    WEIGHT_ARR[i] = normalCDF(-i/SD);
-    cout << WEIGHT_ARR[i] << "\n";
+    WEIGHT_ARR[i - 1] = Normal_CDF(-i/SD);
+    cout << WEIGHT_ARR[i - 1] << "\n";
   }
   
 }
@@ -323,21 +323,27 @@ void Update_Sensor_Status(void) {
 }
 
 // DENOISING
-double Denoise(deque <double> DATA) {
+double Denoise(deque <double> DATA, double CURR_DATA) {
   int DATA_LIST_SIZE = DATA.size();
   double AVERAGE = 0;
-  for (int i = 0; i < DATA_LIST_SIZE; i++)
+  double WEIGHT_SUM = 0;
+
+  AVERAGE += 0.5 * CURR_DATA;
+  WEIGHT_SUM += 0.5;
+
+  for (int i = 0; i < DATA_LIST_SIZE - 1; i++)
   {
     AVERAGE += DATA.at(i) * WEIGHT_ARR[i];
+    WEIGHT_SUM += WEIGHT_ARR[i];
   }
-  
-  return AVERAGE;
+
+  return AVERAGE / WEIGHT_SUM;
 }
 
 // ROBUST READINGS
 double Robust_Position_X(double* simulation) {
   if (POS_X_OK) {
-    return Denoise(POS_X_DATA);
+    return Denoise(POS_X_DATA, Position_X());
   }
   if (VEL_X_OK) {
     return POS_X_DATA[0] + (T_STEP * VEL_X_DATA[0]);
@@ -347,7 +353,7 @@ double Robust_Position_X(double* simulation) {
 
 double Robust_Position_Y(double* simulation) {
   if (POS_Y_OK) {
-    return Denoise(POS_Y_DATA);
+    return Denoise(POS_Y_DATA, Position_Y());
   }
   if (VEL_Y_OK) {
     return POS_Y_DATA[0] + (T_STEP * VEL_Y_DATA[0]);
@@ -357,7 +363,7 @@ double Robust_Position_Y(double* simulation) {
 
 double Robust_Velocity_X(double* simulation) {
   if (VEL_X_OK) {
-    return Denoise(VEL_X_DATA);
+    return Denoise(VEL_X_DATA, Velocity_X());
   }
   if (POS_X_OK) {
     return (Position_X() - POS_X_DATA[0])/T_STEP;
@@ -367,7 +373,7 @@ double Robust_Velocity_X(double* simulation) {
 
 double Robust_Velocity_Y(double* simulation) {
   if (VEL_Y_OK) {
-    return Denoise(VEL_Y_DATA);
+    return Denoise(VEL_Y_DATA, Velocity_Y());
   }
   if (POS_Y_OK) {
     return (Position_Y() - POS_Y_DATA[0])/T_STEP;
@@ -377,7 +383,9 @@ double Robust_Velocity_Y(double* simulation) {
 
 double Robust_Angle(double* simulation) {
   if (ANGLE_OK) {
-    return Denoise(ANGLE_DATA);
+    // Use denoise once angle denoising is implemented
+    //return Denoise(ANGLE_DATA, Angle());
+    return Angle();
   }
   return simulation[4];
 }
@@ -387,7 +395,7 @@ void Update(void) {
   if (COUNTER == 0)
   {
     // Create weight array for Gaussian averaging
-    createWeightedArr();
+    Create_Weighted_Arr();
 
     // No need for simulation or sensor status update, all sensors are reliable
     POS_X_DATA.push_front(Position_X());
