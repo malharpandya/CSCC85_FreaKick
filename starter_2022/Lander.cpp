@@ -178,12 +178,12 @@ bool ANGLE_OK = 1;
 bool SONAR_OK = 1;
 
 // SENSOR RANGE OF RELIABILITY *JACKSON*
-double POS_X_Range = -1;
-double POS_Y_Range = -1;
+double POS_X_Range = 70; // 100 300+ once it fails
+double POS_Y_Range = 70; // 100 300+ once it fails 
 double VEL_X_Range = 2;
-double VEL_Y_Range = -1;
-double ANGLE_Range = -1;
-double SONAR_Range = -1;
+double VEL_Y_Range = 2;
+double ANGLE_Range = 10; // 50+ once it fails
+double SONAR_Range = 1000;
 
 // SENSOR DATA
 int DATA_SIZE = 10;
@@ -279,6 +279,7 @@ void Update_Sensor_Status(void) {
   {
     if (abs(Current[0] - POS_X_DATA[0]) > POS_X_Range) 
     {
+      printf("Detected Position X Sensor Failure\n");
       POS_X_OK = 0;
     }
   }
@@ -286,6 +287,7 @@ void Update_Sensor_Status(void) {
   {
     if (abs(Current[1] - POS_Y_DATA[0]) > POS_Y_Range) 
     {
+      printf("Detected Position Y Sensor Failure\n");
       POS_Y_OK = 0;
     }
   }
@@ -293,6 +295,7 @@ void Update_Sensor_Status(void) {
   {
     if (abs(Current[2] - VEL_X_DATA[0]) > VEL_X_Range) 
     {
+      printf("Detected Velocity X Sensor Failure\n");
       VEL_X_OK = 0;
     }
   }
@@ -300,13 +303,16 @@ void Update_Sensor_Status(void) {
   {
     if (abs(Current[3] - VEL_Y_DATA[0]) > VEL_Y_Range) 
     {
+      printf("Detected Velocity Y Sensor Failure\n");
       VEL_Y_OK = 0;
     }
   }
   if (ANGLE_OK)
   {
-    if (abs(Current[4] - ANGLE_DATA[0]) > ANGLE_Range) 
+    float angleDif = fmin(fmod(abs(Current[4] - ANGLE_DATA[0]),360.0), 360.0 - abs(Current[4] - ANGLE_DATA[0]));
+    if (angleDif > ANGLE_Range) 
     {
+      printf("Detected Angle Sensor Failure\n");
       ANGLE_OK = 0;
     }
   }
@@ -375,6 +381,16 @@ double Robust_Angle(double* simulation) {
 }
 // DATA UPDATING
 void Update(void) {
+  if(COUNTER == 0)
+  {
+    POS_X_DATA.push_front(Position_X());
+    POS_Y_DATA.push_front(Position_Y());
+    VEL_X_DATA.push_front(Velocity_X());
+    VEL_Y_DATA.push_front(Velocity_Y());
+    ANGLE_DATA.push_front(Angle());
+    return;
+  }
+  Update_Sensor_Status();
   // Generate Simulation
   
   if (COUNTER == 0)
@@ -439,6 +455,8 @@ void Lander_Control(void) {
  // with velocity limits when things fail.
   
  // Call Sensor_Status() then Update_Data_Lists() here
+ Update();
+ COUNTER ++;
   
  if (fabs(Position_X()-PLAT_X)>200) VXlim=25;
  else if (fabs(Position_X()-PLAT_X)>100) VXlim=15;
