@@ -273,12 +273,14 @@ double Denoise_Angle(void)
   bool HAS_EDGE = 0;
   double ANGLES[DENOISE_COUNT];
   double SUM = 0;
+  double AVERAGE;
   for (int i = 0; i < DENOISE_COUNT; i++)
   {
     double ANGLE = Angle();
     ANGLES[i] = ANGLE;
+    cout << "Angle before conversion: " << ANGLES[i] << "\n";
 
-    if (!HAS_EDGE && ANGLE < 360 && ANGLE >= 350)
+    if (!HAS_EDGE && ANGLE >= 350)
     {
       HAS_EDGE = 1;
     }
@@ -289,6 +291,7 @@ double Denoise_Angle(void)
     for (int i = 0; i < DENOISE_COUNT; i++)
     {
       ANGLES[i] = fmod(ANGLES[i] + 90, 360);
+      cout << "Angle after conversion: " << ANGLES[i] << "\n";
     }
   }
   
@@ -299,10 +302,24 @@ double Denoise_Angle(void)
 
   if (HAS_EDGE)
   {
-    return SUM / DENOISE_COUNT - 90;
+    AVERAGE = SUM / DENOISE_COUNT - 90;
+    if (AVERAGE < 0)
+    {
+      AVERAGE += 360;
+    }
+
+    cout << "Angle returned (converted): " << AVERAGE  << "\n";
+    return AVERAGE;
   }
 
-  return SUM / DENOISE_COUNT;
+  AVERAGE = SUM / DENOISE_COUNT;
+  if (AVERAGE < 0)
+  {
+    AVERAGE += 360;
+  }
+    
+  cout << "Angle returned: " << AVERAGE  << "\n";
+  return AVERAGE;
 }
 
 // FAULT DETECTION
