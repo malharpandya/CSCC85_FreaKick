@@ -173,7 +173,7 @@ using namespace std;
 double COUNTER = 0;
 // BOOLEAN FLAGS
 bool POS_X_OK = 1;
-bool POS_Y_OK = 1;
+bool POS_Y_OK = 0;
 bool VEL_X_OK = 1;
 bool VEL_Y_OK = 1;
 bool ANGLE_OK = 1;
@@ -209,6 +209,7 @@ double SD = 1;
 
 // HELPERS
 
+double T = 0.02383;
 
 // SIMULATE CURRENT VALUES USING PAST TICK VALUE AND COMMAND GIVEN
 double* Simulate(double* address) {
@@ -220,12 +221,12 @@ double* Simulate(double* address) {
   double PA = ANGLE_DATA[0];
   double AX = MT_ACCEL*MT_DATA*sin(PA) + (LT_ACCEL*LT_DATA - RT_ACCEL*RT_DATA)*cos(PA); // 0 if in rotation
   double AY = (G_ACCEL - MT_ACCEL*MT_DATA*cos(PA)) + (LT_ACCEL*LT_DATA - RT_ACCEL*RT_DATA)*sin(PA); // G if in rotation
-  double DX = PVX*T_STEP + 0.5*AX*T_STEP*T_STEP;
-  double DY = PVY*T_STEP + 0.5*AY*T_STEP*T_STEP;
+  double DX = PVX*T + 0.5*AX*T*T;
+  double DY = PVY*T + 0.5*AY*T*T;
   double CPX = PPX + DX;
-  double CPY = PPY + DY;
-  double CVX = PVX + AX*T_STEP;
-  double CVY = PVY + AY*T_STEP;
+  double CPY = PPY - DY;
+  double CVX = PVX + AX*T;
+  double CVY = PVY - AY*T;
   double CA = PA + ROTATE_DATA; // Need to account for max rotate rate
   double max_rotate_degrees = MAX_ROT_RATE*180/PI;
   int sign = (ROTATE_DATA > 0) - (ROTATE_DATA < 0); // 1 if positive, -1 if negative, 0 if 0
@@ -270,6 +271,13 @@ void Create_Weighted_Arr(void)
   
 }
 
+// Testing code
+float maxPosDiff = 0;
+float maxYPosDiff = 0;
+float maxVelXDiff = 0;
+float maxVelYDiff = 0;
+float maxAngle = 0;
+
 // FAULT DETECTION
 void Update_Sensor_Status(void) {
   /*
@@ -279,6 +287,12 @@ void Update_Sensor_Status(void) {
   double* Current = Get_Current_Readings(Current_Readings);
   if (POS_X_OK)
   {
+    
+    if (abs(Current[0] - POS_X_DATA[0] > maxPosDiff)){maxPosDiff = abs(Current[0] - POS_X_DATA[0]);}
+
+    // printf("Checking if position x is faulty\n");
+    // printf("Difference: %f Max Difference: %f \n", abs(Current[0] - POS_X_DATA[0]), maxPosDiff);
+    
     if (abs(Current[0] - POS_X_DATA[0]) > POS_X_Range) 
     {
       printf("Detected Position X Sensor Failure\n");
@@ -287,6 +301,13 @@ void Update_Sensor_Status(void) {
   }
   if (POS_Y_OK)
   {
+
+    if (abs(Current[1] - POS_Y_DATA[0] > maxYPosDiff)){maxYPosDiff = abs(Current[1] - POS_Y_DATA[0]);}
+
+    // printf("Checking if position Y is faulty\n");
+    // printf("Difference: %f Max Difference: %f \n", abs(Current[1] - POS_Y_DATA[0]), maxYPosDiff);
+    
+
     if (abs(Current[1] - POS_Y_DATA[0]) > POS_Y_Range) 
     {
       printf("Detected Position Y Sensor Failure\n");
@@ -295,6 +316,12 @@ void Update_Sensor_Status(void) {
   }
   if (VEL_X_OK)
   {
+
+    if (abs(Current[2] - VEL_X_DATA[0] > maxVelXDiff)){maxVelXDiff = abs(Current[2] - VEL_X_DATA[0]);}
+
+    // printf("Checking if Vel X is faulty\n");
+    // printf("Difference: %f Max Difference: %f \n", abs(Current[2] - VEL_X_DATA[0]), maxVelXDiff);
+    
     if (abs(Current[2] - VEL_X_DATA[0]) > VEL_X_Range) 
     {
       printf("Detected Velocity X Sensor Failure\n");
@@ -303,6 +330,12 @@ void Update_Sensor_Status(void) {
   }
   if (VEL_Y_OK)
   {
+
+    if (abs(Current[3] - VEL_Y_DATA[0] > maxVelYDiff)){maxVelYDiff = abs(Current[3] - VEL_Y_DATA[0]);}
+
+    // printf("Checking if VEL Y is faulty\n");
+    // printf("Difference: %f Max Difference: %f \n", abs(Current[3] - VEL_Y_DATA[0]), maxVelYDiff);
+
     if (abs(Current[3] - VEL_Y_DATA[0]) > VEL_Y_Range) 
     {
       printf("Detected Velocity Y Sensor Failure\n");
@@ -311,7 +344,13 @@ void Update_Sensor_Status(void) {
   }
   if (ANGLE_OK)
   {
+    
     float angleDif = fmin(fmod(abs(Current[4] - ANGLE_DATA[0]),360.0), 360.0 - abs(Current[4] - ANGLE_DATA[0]));
+    if (angleDif > maxAngle){maxAngle = angleDif;}
+
+    // printf("Checking if Angle is faulty\n");
+    // printf("Difference: %f Max Difference: %f \n", angleDif, maxAngle);
+
     if (angleDif > ANGLE_Range) 
     {
       printf("Detected Angle Sensor Failure\n");
@@ -340,14 +379,19 @@ double Denoise(deque <double> DATA, double CURR_DATA) {
   return AVERAGE / WEIGHT_SUM;
 }
 
+
 // ROBUST READINGS
 double Robust_Position_X(double* simulation) {
+  if (POS_X_DATA.size()>2){
+    // printf("denoised change in position x: %f\n", abs(POS_X_DATA[1]- POS_X_DATA[0]));
+  }
   if (POS_X_OK) {
     return Denoise(POS_X_DATA, Position_X());
   }
-  if (VEL_X_OK) {
-    return POS_X_DATA[0] + (T_STEP * VEL_X_DATA[0]);
-  }
+  // if (VEL_X_OK) {
+    printf("Actual PosX: %f, Simulated PosX: %f\n", Position_X(), POS_X_DATA[0] + (0.02383 * VEL_X_DATA[0]));
+  //   return POS_X_DATA[0] + (0.02383 * VEL_X_DATA[0]);
+  // }
   return simulation[0];
 }
 
@@ -355,9 +399,11 @@ double Robust_Position_Y(double* simulation) {
   if (POS_Y_OK) {
     return Denoise(POS_Y_DATA, Position_Y());
   }
-  if (VEL_Y_OK) {
-    return POS_Y_DATA[0] + (T_STEP * VEL_Y_DATA[0]);
-  }
+  // if (VEL_Y_OK) {
+  //   printf("VEL Y: %f\n", Velocity_Y());
+    printf("Actual PosY: %f, Simulated PosY: %f\n", Position_Y(), POS_Y_DATA[0] + (0.02383 * VEL_Y_DATA[0]));
+  //   return POS_Y_DATA[0] - (0.02383  * VEL_Y_DATA[0]);
+  // }
   return simulation[1];
 }
 
@@ -376,7 +422,7 @@ double Robust_Velocity_Y(double* simulation) {
     return Denoise(VEL_Y_DATA, Velocity_Y());
   }
   if (POS_Y_OK) {
-    return (Position_Y() - POS_Y_DATA[0])/T_STEP;
+    return -(Position_Y() - POS_Y_DATA[0])/T_STEP;
   }
   return simulation[3];
 }
@@ -406,6 +452,7 @@ void Update(void) {
     return;
   }
   Update_Sensor_Status();
+
   double simulate[6];
   double* simulation = Simulate(simulate);
   POS_X_DATA.push_front(Robust_Position_X(simulate));
@@ -446,6 +493,10 @@ void Lander_Control(void) {
  double VXlim;
  double VYlim;
 
+//  printf("velocity: %f\n", Velocity_X());
+//  printf("position x: %f\n", Position_X());
+//  printf("time = %f\n", abs((Position_X()-POS_X_DATA[0])/Velocity_X()));
+
  // Set velocity limits depending on distance to platform.
  // If the module is far from the platform allow it to
  // move faster, decrease speed limits as the module
@@ -455,17 +506,19 @@ void Lander_Control(void) {
  // Call Sensor_Status() then Update_Data_Lists() here
  Update();
  COUNTER ++;
+//  printf("Counter %f\n", COUNTER);
   
- if (fabs(Position_X()-PLAT_X)>200) VXlim=25;
- else if (fabs(Position_X()-PLAT_X)>100) VXlim=15;
+//  printf("Position X: %f\n", Position_X());
+ if (fabs(POS_X_DATA[0]-PLAT_X)>200) VXlim=25;
+ else if (fabs(POS_X_DATA[0]-PLAT_X)>100) VXlim=15;
  else VXlim=5;
 
- if (PLAT_Y-Position_Y()>200) VYlim=-20;
- else if (PLAT_Y-Position_Y()>100) VYlim=-10;  // These are negative because they
+ if (PLAT_Y-POS_Y_DATA[0]>200) VYlim=-20;
+ else if (PLAT_Y-POS_Y_DATA[0]>100) VYlim=-10;  // These are negative because they
  else VYlim=-4;				       // limit descent velocity
 
  // Ensure we will be OVER the platform when we land
- if (fabs(PLAT_X-Position_X())/fabs(Velocity_X())>1.25*fabs(PLAT_Y-Position_Y())/fabs(Velocity_Y())) VYlim=0;
+ if (fabs(PLAT_X-POS_X_DATA[0])/fabs(Velocity_X())>1.25*fabs(PLAT_Y-POS_Y_DATA[0])/fabs(Velocity_Y())) VYlim=0;
 
  // IMPORTANT NOTE: The code below assumes all components working
  // properly. IT MAY OR MAY NOT BE USEFUL TO YOU when components
@@ -488,35 +541,36 @@ void Lander_Control(void) {
 
  // Module is oriented properly, check for horizontal position
  // and set thrusters appropriately.
- if (Position_X()>PLAT_X)
+ if (POS_X_DATA[0]>PLAT_X)
  {
   // Lander is to the LEFT of the landing platform, use Right thrusters to move
   // lander to the left.
   Left_Thruster(0);	// Make sure we're not fighting ourselves here!
-  if (Velocity_X()>(-VXlim)) Right_Thruster((VXlim+fmin(0,Velocity_X()))/VXlim);
+  if (Velocity_X()>(-VXlim)) Right_Thruster(fmin(0.9,(VXlim+fmin(0,Velocity_X()))/VXlim));
   else
   {
    // Exceeded velocity limit, brake
    Right_Thruster(0);
-   Left_Thruster(fabs(VXlim-Velocity_X()));
+  //  if (fabs(VXlim-Velocity_X()) > 1) {printf("Oout of bound: %f", fabs(VXlim-Velocity_X()));}
+   Left_Thruster(fmin(0.9,fabs(VXlim-Velocity_X())));
   }
  }
  else
  {
   // Lander is to the RIGHT of the landing platform, opposite from above
   Right_Thruster(0);
-  if (Velocity_X()<VXlim) Left_Thruster((VXlim-fmax(0,Velocity_X()))/VXlim);
+  if (Velocity_X()<VXlim) Left_Thruster(fmin(0.9,(VXlim-fmax(0,Velocity_X()))/VXlim));
   else
   {
    Left_Thruster(0);
-   Right_Thruster(fabs(VXlim-Velocity_X()));
+   Right_Thruster(fmin(0.9,fabs(VXlim-Velocity_X())));
   }
  }
 
  // Vertical adjustments. Basically, keep the module below the limit for
  // vertical velocity and allow for continuous descent. We trust
  // Safety_Override() to save us from crashing with the ground.
- if (Velocity_Y()<VYlim) Main_Thruster(1.0);
+ if (Velocity_Y()<VYlim) Main_Thruster(0.9);
  else Main_Thruster(0);
 }
 
@@ -565,7 +619,7 @@ void Safety_Override(void) {
  // safety override (close to the landing platform
  // the Control_Policy() should be trusted to
  // safely land the craft)
- if (fabs(PLAT_X-Position_X())<150&&fabs(PLAT_Y-Position_Y())<150) return;
+ if (fabs(PLAT_X-POS_X_DATA[0])<150&&fabs(PLAT_Y-POS_Y_DATA[0])<150) return;
 
  // Determine the closest surfaces in the direction
  // of motion. This is done by checking the sonar
@@ -598,12 +652,12 @@ void Safety_Override(void) {
   }
 
   if (Velocity_X()>0){
-   Right_Thruster(1.0);
+   Right_Thruster(0.9);
    Left_Thruster(0.0);
   }
   else
   {
-   Left_Thruster(1.0);
+   Left_Thruster(0.9);
    Right_Thruster(0.0);
   }
  }
@@ -635,7 +689,7 @@ void Safety_Override(void) {
   }
   else
   {
-   Main_Thruster(1.0);
+   Main_Thruster(0.9);
   }
  }
 }
