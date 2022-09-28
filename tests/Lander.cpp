@@ -164,8 +164,6 @@
 #include <iostream>
 
 #include "Lander_Control.h"
-#include <cstdio>
-
 
 using namespace std;
 
@@ -180,12 +178,12 @@ bool ANGLE_OK = 1;
 bool SONAR_OK = 1;
 
 // SENSOR RANGE OF RELIABILITY *JACKSON*
-double POS_X_Range = 70; // 100 300+ once it fails
-double POS_Y_Range = 70; // 100 300+ once it fails 
+double POS_X_Range = -1;
+double POS_Y_Range = -1;
 double VEL_X_Range = 2;
-double VEL_Y_Range = 2;
-double ANGLE_Range = 10; // 50+ once it fails
-double SONAR_Range = 1000;
+double VEL_Y_Range = -1;
+double ANGLE_Range = -1;
+double SONAR_Range = -1;
 
 // SENSOR DATA
 int DATA_SIZE = 10;
@@ -202,13 +200,6 @@ double MT_DATA; // [0 ,1]
 double LT_DATA; // [0 ,1]
 double RT_DATA; // [0 ,1]
 double ROTATE_DATA; // 0 if not rotating, or howewer much is left to rotate (in degrees) in which case all thrusters are 0
-
-// DENOISE COUNT
-int DENOISE_COUNT = 30;
-
-// DENOISING VECTOR
-// double WEIGHT_ARR [9];
-// double SD = 1;
 
 // HELPERS
 
@@ -243,66 +234,18 @@ double* Simulate(double* address) {
   return address;
 }
 
-// // WEIGHTED ARRAY CREATION
-// double Normal_CDF(double value)
-// {
-//    return 0.5 * erfc(-value * sqrt(0.5));
-// }
-
-// void Create_Weighted_Arr(void)
-// {
-//   for (int i = 1; i < DATA_SIZE; i++)
-//   {
-//     WEIGHT_ARR[i - 1] = Normal_CDF(-i/SD);
-//   }
-  
-// }
-
-// DENOISING
-// Denoising position and velocity sensors by reading multiple times in the same tick and averaging it
-double Denoise(double (*Sensor_Call)(void)) {
-  double Sensor_Reading = 0;
-  for (int i = 0; i < DENOISE_COUNT; i++) {
-    Sensor_Reading += Sensor_Call();
-  }
-  return Sensor_Reading/DENOISE_COUNT;
-}
-// Denoise using multiple calls of a sensor per tick
-double Denoise_Angle(void)
-{
-  bool HAS_EDGE = 0;
-  double ANGLES[DENOISE_COUNT];
-  double SUM = 0;
-  for (int i = 0; i < DENOISE_COUNT; i++)
-  {
-    double ANGLE = Angle();
-    ANGLES[i] = ANGLE;
-
-    if (!HAS_EDGE && ANGLE < 360 && ANGLE >= 350)
-    {
-      HAS_EDGE = 1;
-    }
-  }
-
-  if (HAS_EDGE)
-  {
-    for (int i = 0; i < DENOISE_COUNT; i++)
-    {
-      ANGLES[i] = fmod(ANGLES[i] + 90, 360);
-    }
-  }
-  
-  for (int i = 0; i < DENOISE_COUNT; i++)
-  {
-    SUM += ANGLES[i];
-  }
-
-  if (HAS_EDGE)
-  {
-    return SUM / DENOISE_COUNT - 90;
-  }
-
-  return SUM / DENOISE_COUNT;
+// GET CURRENT READING EXCEPT SONAR
+double* Get_Current_Readings(double* address) {
+  /*
+      Given an array (pointer), fill it with sensor readings
+      WARNING: initialize array "address" with the right size (6)
+  */
+  address[0] = Position_X();
+  address[1] = Position_Y();
+  address[2] = Velocity_X();
+  address[3] = Velocity_Y();
+  address[4] = Angle();
+  return address;
 }
 
 // FAULT DETECTION
@@ -310,44 +253,41 @@ void Update_Sensor_Status(void) {
   /*
       Update global flags of sensors statuses based on current reading and previous reading (prior Tick) stored in the global array
   */
+  if (COUNTER == 0) {return;}
+  double Current_Readings[6];
+  double* Current = Get_Current_Readings(Current_Readings);
   if (POS_X_OK)
   {
-    if (abs(Denoise(&Position_X) - POS_X_DATA[0]) > POS_X_Range) 
+    if (abs(Current[0] - POS_X_DATA[0]) > POS_X_Range) 
     {
-      printf("Detected Position X Sensor Failure\n");
       POS_X_OK = 0;
     }
   }
   if (POS_Y_OK)
   {
-    if (abs(Denoise(&Position_Y) - POS_Y_DATA[0]) > POS_Y_Range) 
+    if (abs(Current[1] - POS_Y_DATA[0]) > POS_Y_Range) 
     {
-      printf("Detected Position Y Sensor Failure\n");
       POS_Y_OK = 0;
     }
   }
   if (VEL_X_OK)
   {
-    if (abs(Denoise(&Velocity_X) - VEL_X_DATA[0]) > VEL_X_Range) 
+    if (abs(Current[2] - VEL_X_DATA[0]) > VEL_X_Range) 
     {
-      printf("Detected Velocity X Sensor Failure\n");
       VEL_X_OK = 0;
     }
   }
   if (VEL_Y_OK)
   {
-    if (abs(Denoise(&Velocity_Y) - VEL_Y_DATA[0]) > VEL_Y_Range) 
+    if (abs(Current[3] - VEL_Y_DATA[0]) > VEL_Y_Range) 
     {
-      printf("Detected Velocity Y Sensor Failure\n");
       VEL_Y_OK = 0;
     }
   }
   if (ANGLE_OK)
   {
-    float angleDif = fmin(fmod(abs(Denoise_Angle() - ANGLE_DATA[0]),360.0), 360.0 - abs(Denoise_Angle() - ANGLE_DATA[0]));
-    if (angleDif > ANGLE_Range) 
+    if (abs(Current[4] - ANGLE_DATA[0]) > ANGLE_Range) 
     {
-      printf("Detected Angle Sensor Failure\n");
       ANGLE_OK = 0;
     }
   }
@@ -355,10 +295,31 @@ void Update_Sensor_Status(void) {
   return;
 }
 
+// DENOISING
+double Denoise_Position_X(void) {
+  return -1;
+}
+
+double Denoise_Position_Y(void) {
+  return -1;
+}
+
+double Denoise_Velocity_X(void) {
+  return -1;
+}
+
+double Denoise_Velocity_Y(void) {
+  return -1;
+}
+
+double Denoise_Angle(void) {
+  return -1;
+}
+
 // ROBUST READINGS
 double Robust_Position_X(double* simulation) {
   if (POS_X_OK) {
-    return Denoise(&Position_X);
+    return Denoise_Position_X();
   }
   if (VEL_X_OK) {
     return POS_X_DATA[0] + (T_STEP * VEL_X_DATA[0]);
@@ -368,56 +329,43 @@ double Robust_Position_X(double* simulation) {
 
 double Robust_Position_Y(double* simulation) {
   if (POS_Y_OK) {
-    return Denoise(&Position_Y);
+    return Denoise_Position_Y();
   }
   if (VEL_Y_OK) {
-    return POS_Y_DATA[0] - (T_STEP * VEL_Y_DATA[0]);
+    return POS_Y_DATA[0] + (T_STEP * VEL_Y_DATA[0]);
   }
   return simulation[1];
 }
 
 double Robust_Velocity_X(double* simulation) {
   if (VEL_X_OK) {
-    return Denoise(&Velocity_X);
+    return Denoise_Velocity_X();
   }
   if (POS_X_OK) {
-    return (Denoise(&Position_X) - POS_X_DATA[0])/T_STEP;
+    return (Position_X() - POS_X_DATA[0])/T_STEP;
   }
   return simulation[2];
 }
 
 double Robust_Velocity_Y(double* simulation) {
   if (VEL_Y_OK) {
-    return Denoise(&Velocity_Y);
+    return Denoise_Velocity_Y();
   }
   if (POS_Y_OK) {
-    return (POS_Y_DATA[0] - Denoise(&Position_Y))/T_STEP;
+    return (Position_Y() - POS_Y_DATA[0])/T_STEP;
   }
   return simulation[3];
 }
 
 double Robust_Angle(double* simulation) {
   if (ANGLE_OK) {
-    // Use denoise once angle denoising is implemented
-    //return Denoise(ANGLE_DATA, Angle());
     return Denoise_Angle();
   }
   return simulation[4];
 }
 // DATA UPDATING
-void Update(void) {
-  
-  if (COUNTER == 0)
-  {
-    // No need for simulation or sensor status update, all sensors are reliable
-    POS_X_DATA.push_front(Position_X());
-    POS_Y_DATA.push_front(Position_Y());
-    VEL_X_DATA.push_front(Velocity_X());
-    VEL_Y_DATA.push_front(Velocity_Y());
-    ANGLE_DATA.push_front(Angle());
-    return;
-  }
-  Update_Sensor_Status();
+void Update_Data_Lists(void) {
+  // Generate Simulation
   double simulate[6];
   double* simulation = Simulate(simulate);
   POS_X_DATA.push_front(Robust_Position_X(simulate));
@@ -454,7 +402,7 @@ void Lander_Control(void) {
   // use global data arrays[-1] to decide where to go
   // store comands given to global (keep all thruster commands between [0.1, 0.9] and keep exclusive from rotation in which case thuster power should be 0)
   // add 1 to Tick counter at the very end of the code
-
+ /*
  double VXlim;
  double VYlim;
 
@@ -465,8 +413,6 @@ void Lander_Control(void) {
  // with velocity limits when things fail.
   
  // Call Sensor_Status() then Update_Data_Lists() here
- Update();
- COUNTER ++;
   
  if (fabs(Position_X()-PLAT_X)>200) VXlim=25;
  else if (fabs(Position_X()-PLAT_X)>100) VXlim=15;
@@ -529,7 +475,13 @@ void Lander_Control(void) {
  // vertical velocity and allow for continuous descent. We trust
  // Safety_Override() to save us from crashing with the ground.
  if (Velocity_Y()<VYlim) Main_Thruster(1.0);
- else Main_Thruster(0);
+ else Main_Thruster(0);*/
+ for (int i = 0; i < 30; i++)
+ {
+  cout << Angle() << "\n";
+ }
+ 
+
 }
 
 void Safety_Override(void) {
@@ -560,7 +512,7 @@ void Safety_Override(void) {
   not corresponding to the landing platform,
   carry out speed corrections using the thrusters
 **************************************************/
-
+/*
  double DistLimit;
  double Vmag;
  double dmin;
@@ -650,4 +602,5 @@ void Safety_Override(void) {
    Main_Thruster(1.0);
   }
  }
+ */
 }
