@@ -267,11 +267,43 @@ double Denoise(double (*Sensor_Call)(void)) {
   }
   return Sensor_Reading/DENOISE_COUNT;
 }
-// Denoising angle sensor
-double Denoise_Angle(void) {
-  return Angle();
-}
+// Denoise using multiple calls of a sensor per tick
+double Denoise_Angle(void)
+{
+  bool HAS_EDGE = 0;
+  double ANGLES[DENOISE_COUNT];
+  double SUM = 0;
+  for (int i = 0; i < DENOISE_COUNT; i++)
+  {
+    double ANGLE = Angle();
+    ANGLES[i] = ANGLE;
 
+    if (!HAS_EDGE && ANGLE < 360 && ANGLE >= 350)
+    {
+      HAS_EDGE = 1;
+    }
+  }
+
+  if (HAS_EDGE)
+  {
+    for (int i = 0; i < DENOISE_COUNT; i++)
+    {
+      ANGLES[i] = fmod(ANGLES[i] + 90, 360);
+    }
+  }
+  
+  for (int i = 0; i < DENOISE_COUNT; i++)
+  {
+    SUM += ANGLES[i];
+  }
+
+  if (HAS_EDGE)
+  {
+    return SUM / DENOISE_COUNT - 90;
+  }
+
+  return SUM / DENOISE_COUNT;
+}
 
 // FAULT DETECTION
 void Update_Sensor_Status(void) {
@@ -321,33 +353,6 @@ void Update_Sensor_Status(void) {
   }
   // FIGURE SONAR STATUS
   return;
-}
-
-// Denoise using multiple calls of a sensor per tick
-double Denoise_Angle(void)
-{
-  bool HAS_EDGE = 0;
-  double ANGLES[30];
-  double SUM = 0;
-  for (int i = 0; i < 30; i++)
-  {
-    double ANGLE = Angle();
-    ANGLES[i] = ANGLE;
-
-    if (!HAS_EDGE && ANGLE < 360 && ANGLE >= 350)
-    {
-      HAS_EDGE = 1;
-    }
-  }
-
-  if (HAS_EDGE)
-  {
-    for (int i = 0; i < 30; i++)
-    {
-      ANGLES[i] = ANGLES[i] + 90;
-    }
-  }
-  
 }
 
 // ROBUST READINGS
