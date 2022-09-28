@@ -270,11 +270,19 @@ bool Sensor_Update(bool *SENSOR_STATUS, double (*Sensor_Call)(void), double *SEN
 // Detect angle sensor failure and return denoised value if not faulty
 bool Angle_Update(void)
 {
+  if (!ANGLE_OK)
+  {
+    //cout << "*************************************************************";
+    return 0;
+  }
+
   double angle_readings[SENSOR_COUNT];
   double angle_reading_total = 0;
-  double max = -1;
+  double max = -500;
+  double min = 500;
   double ANGLE_CURR;
   bool HAS_EDGE = 0;
+
   for (int i = 0; i < SENSOR_COUNT; i++) {
     ANGLE_CURR = Angle();
     angle_readings[i] = ANGLE_CURR;
@@ -299,34 +307,34 @@ bool Angle_Update(void)
   
   for (int i = 0; i < SENSOR_COUNT; i++) {
     angle_reading_total += angle_readings[i];
-    if (abs(angle_readings[i]) > max) {
-      max = abs(angle_readings[i]);
+    if (angle_readings[i] > max) {
+      max = angle_readings[i];
     }
+    if (angle_readings[i] < min)
+    {
+      min = angle_readings[i];
+    }
+    
   }
+
   // Calculate the mean of all angles
   double mean = angle_reading_total/SENSOR_COUNT;
 
-  // Calculate the variance (normalize the readings first)
-  double variance = 0;
-  for (int i=0; i < SENSOR_COUNT; i++) {
-    variance += pow((angle_readings[i] - mean)/max, 2);
-  }
-
   // Check if sensor is faulty
-  if (variance >= VARIANCE_THRESHOLD) {
+  if (max - min > 3.5)
+  {
     ANGLE_OK = 0;
-    return 0; // sensor fail
+    return 0;
   }
+  
 
   mean -= HAS_EDGE * 90;
-
   if (mean < 0)
   {
     mean += 360;
   }
-
+  //cout << "Difference: " << max - min << "\n";
   //cout << "Angle returned: " << mean << "\n";
-
   return 1;
 }
 
