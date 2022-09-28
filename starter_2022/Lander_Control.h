@@ -16,9 +16,6 @@
 #define DISPLAY_LATENCY 10
 #define HIST 180
 
-#define DENOISING_SIZE 10
-#define FAULT_TOLERANCE 3
-
 // Global variables accessible to your flight computer
 extern int MT_OK;
 extern int RT_OK;
@@ -38,22 +35,6 @@ double Position_X(void);
 double Position_Y(void);
 double Angle(void);
 double RangeDist(void);
-
-// Global variables for Lander.cpp
-// extern int VEL_X_OK;
-// extern int VEL_Y_OK;
-// extern int POS_X_OK;
-// extern int POS_Y_OK;
-// extern int ANGLE_OK;
-
-// Global variables used for denoising
-// extern double VEL_X[DENOISING_SIZE];
-// extern double VEL_Y[DENOISING_SIZE];
-extern double POS_X[DENOISING_SIZE];
-extern double POS_Y[DENOISING_SIZE];
-extern double ANGLE[DENOISING_SIZE];
-extern double SONAR[36][DENOISING_SIZE];
-
 
 // Function prototypes for code you need to look at
 void Lander_Control(void);
