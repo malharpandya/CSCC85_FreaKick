@@ -339,7 +339,7 @@ double Robust_Position_Y(double* simulation) {
     return Denoise(&Position_Y);
   }
   if (VEL_Y_OK) {
-    return POS_Y_DATA[0] + (T_STEP * VEL_Y_DATA[0]);
+    return POS_Y_DATA[0] - (T_STEP * VEL_Y_DATA[0]);
   }
   return simulation[1];
 }
@@ -349,7 +349,7 @@ double Robust_Velocity_X(double* simulation) {
     return Denoise(&Velocity_X);
   }
   if (POS_X_OK) {
-    return (Position_X() - POS_X_DATA[0])/T_STEP;
+    return (Denoise(&Position_X) - POS_X_DATA[0])/T_STEP;
   }
   return simulation[2];
 }
@@ -359,7 +359,7 @@ double Robust_Velocity_Y(double* simulation) {
     return Denoise(&Velocity_Y);
   }
   if (POS_Y_OK) {
-    return (Position_Y() - POS_Y_DATA[0])/T_STEP;
+    return (POS_Y_DATA[0] - Denoise(&Position_Y))/T_STEP;
   }
   return simulation[3];
 }
