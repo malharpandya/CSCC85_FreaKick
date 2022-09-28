@@ -268,65 +268,66 @@ bool Sensor_Update(bool *SENSOR_STATUS, double (*Sensor_Call)(void), double *SEN
   return 1; // denoised value updated to global variable
 }
 // Detect angle sensor failure and return denoised value if not faulty
-double Angle_Update(void)
+bool Angle_Update(void)
 {
-  // NEED TO DETECT FAILURE HERE, USE THIS CODE MAYBE?????
-  // float angleDif = fmin(fmod(abs(Denoise_Angle() - ANGLE_DATA[0]),360.0), 360.0 - abs(Denoise_Angle() - ANGLE_DATA[0]));
-  //   if (angleDif > ANGLE_Range) 
-  //   {
-  //     printf("Detected Angle Sensor Failure\n");
-  //     ANGLE_OK = 0;
-  //   }
+  double angle_readings[SENSOR_COUNT];
+  double angle_reading_total = 0;
+  double max = -1;
+  double ANGLE_CURR;
   bool HAS_EDGE = 0;
-  double ANGLES[SENSOR_COUNT];
-  double SUM = 0;
-  double AVERAGE;
-  for (int i = 0; i < SENSOR_COUNT; i++)
-  {
-    double ANGLE = Angle();
-    ANGLES[i] = ANGLE;
-    cout << "Angle before conversion: " << ANGLES[i] << "\n";
+  for (int i = 0; i < SENSOR_COUNT; i++) {
+    ANGLE_CURR = Angle();
+    angle_readings[i] = ANGLE_CURR;
 
-    if (!HAS_EDGE && ANGLE >= 350)
+    if (!HAS_EDGE && (ANGLE_CURR >= 350 || ANGLE_CURR < 0))
     {
       HAS_EDGE = 1;
     }
-  }
 
+    //cout << "Angle before conversion: " << angle_readings[i] << "\n";
+  }
+  
+  // CODE THAT MODIFIES THE ANGLES
   if (HAS_EDGE)
   {
     for (int i = 0; i < SENSOR_COUNT; i++)
     {
-      ANGLES[i] = fmod(ANGLES[i] + 90, 360);
-      cout << "Angle after conversion: " << ANGLES[i] << "\n";
+      angle_readings[i] = fmod(angle_readings[i] + 90, 360);
+      //cout << "Angle after conversion: " << angle_readings[i] << "\n";
     }
   }
   
-  for (int i = 0; i < SENSOR_COUNT; i++)
-  {
-    SUM += ANGLES[i];
-  }
-
-  if (HAS_EDGE)
-  {
-    AVERAGE = SUM / SENSOR_COUNT - 90;
-    if (AVERAGE < 0)
-    {
-      AVERAGE += 360;
+  for (int i = 0; i < SENSOR_COUNT; i++) {
+    angle_reading_total += angle_readings[i];
+    if (abs(angle_readings[i]) > max) {
+      max = abs(angle_readings[i]);
     }
+  }
+  // Calculate the mean of all angles
+  double mean = angle_reading_total/SENSOR_COUNT;
 
-    cout << "Angle returned (converted): " << AVERAGE  << "\n";
-    return AVERAGE;
+  // Calculate the variance (normalize the readings first)
+  double variance = 0;
+  for (int i=0; i < SENSOR_COUNT; i++) {
+    variance += pow((angle_readings[i] - mean)/max, 2);
   }
 
-  AVERAGE = SUM / SENSOR_COUNT;
-  if (AVERAGE < 0)
+  // Check if sensor is faulty
+  if (variance >= VARIANCE_THRESHOLD) {
+    ANGLE_OK = 0;
+    return 0; // sensor fail
+  }
+
+  mean -= HAS_EDGE * 90;
+
+  if (mean < 0)
   {
-    AVERAGE += 360;
+    mean += 360;
   }
-    
-  cout << "Angle returned: " << AVERAGE  << "\n";
-  return AVERAGE;
+
+  //cout << "Angle returned: " << mean << "\n";
+
+  return 1;
 }
 
 // DATA UPDATING
@@ -371,10 +372,95 @@ void Update(void) {
       VEL_Y = simulated_values[3];
     }
   }
-  if (!Sensor_Update(&ANGLE_OK, &Angle, &ANGLE)) {
+  if (!Angle_Update()) {
     ANGLE = simulated_values[4];
   }
 
+}
+
+// Flight Control
+int Flight_Mode(void)
+{
+  // All thrusters nominal
+  if (MT_OK && RT_OK && LT_OK)
+  {
+    return 0;
+  }
+  
+  // 2 thrusters disabled
+  // Main thruster nominal
+  if (!LT_OK && !RT_OK)
+  {
+    return 1;
+  }
+
+  // Left thruster nominal
+  if (!MT_OK && !RT_OK)
+  {
+    return 2;
+  }
+
+  // Right thruster nominal
+  if (!MT_OK && !LT_OK)
+  {
+    return 3;
+  }
+
+  // 1 thruster disabled, 1 sensor disabled
+  // Angle sensor works
+  if (ANGLE_OK)
+  {
+    // Use same flight mode as 2 thrusters disabled case, and choose new main thruster accordingly (prefer main thruster)
+    if (MT_OK)
+    {
+      return 1;
+    }
+
+    if (LT_OK)
+    {
+      return 2;
+    }
+
+    if (RT_OK)
+    {
+      return 3;
+    }
+  }
+  
+  // Angle sensor doesn't work
+  // Choose new main thruster
+  if (MT_OK)
+  {
+    return 4;
+  }
+
+  if (LT_OK)
+  {
+    return 5;
+  }
+
+  if (RT_OK)
+  {
+    return 6;
+  }
+
+  return -1;
+}
+
+void Turn_Burn(int THRUSTER, int DIR)
+{
+  // THRUSTER: 1 = MAIN, 2 = LEFT, 3 = RIGHT
+  // DIR: 1 = DOWN, 2 = LEFT, 3 = RIGHT, 4 = UP
+}
+
+void Flight_Control(void)
+{
+  int FLIGHT_MODE = Flight_Mode();
+  if (FLIGHT_MODE == 0)
+  {
+    /* code */
+  }
+  
 }
 
 void Lander_Control(void) {
