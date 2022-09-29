@@ -207,7 +207,7 @@ int SENSOR_COUNT = 100000;
 double VARIANCE_THRESHOLD = 0.05;
 double T = 0.025;
 
-double TestT = 0.025;
+double TestT = 0.02385;
 // 02385
 // HELPERS
 
@@ -244,7 +244,7 @@ void Simulate(double* address) {
 // SENSOR CONSISTENCY AND DENOISING
 // Detect sensor failure and put denoised value into global variable if not faulty
 bool Sensor_Update(bool *SENSOR_STATUS, double (*Sensor_Call)(void), double *SENSOR) {
-  if (SENSOR_STATUS == 0) {return 0;}
+  // if (SENSOR_STATUS == 0) {return 0;}
   
   // Call sensor multiple times and store it in an array
   double sensor_readings[SENSOR_COUNT];
@@ -365,34 +365,36 @@ void Update(void) {
   // WE ASSUME FIRST BUNCH OF TICKS DO NOT CAUSE ANY SENSOR FAILURES
   // cout << "Calling Sensor Updates\n";
 
-  if (!Sensor_Update(&POS_X_OK, &Position_X, &POS_X)) {
-    cout << "Position X sensor faulty\n";
-    cout << "actual position x:" << POS_X << " estimated position X: " << PXP +  T * VXP << " Difference: " << abs((PXP +  T * VXP)-POS_X)<<"\n";
-    if (VEL_X_OK) {
-      cout << "update\n";
-      POS_X = PXP +  T * VXP;
-    } else {
+  if (!Sensor_Update(&POS_X_OK, &Position_X, &POS_X) || !POS_X_OK) {
+    cout << COUNTER << "Position X sensor faulty\n";
+    cout << "Simulated Position X:" << simulated_values[0] << " Actual Position X:" << POS_X << " difference:" << simulated_values[0] - POS_X << "\n";
+    // cout << "actual position x:" << POS_X << " estimated position X: " << PXP +  T * VXP << " Difference: " << abs((PXP +  T * VXP)-POS_X)<<"\n";
+    // if (VEL_X_OK) {
+    //   cout << "update\n";
+    //   POS_X = PXP +  T * VXP;
+    // } else {
       POS_X = simulated_values[0];
-    }
+    // }
   }
   
   OLD_POS_X_DATA.push_front(POS_X);
   if (OLD_POS_X_DATA.size() == 3 + 1){ OLD_POS_X_DATA.pop_back(); }
 
 
-  if (!Sensor_Update(&POS_Y_OK, &Position_Y, &POS_Y)) {
+  if (!Sensor_Update(&POS_Y_OK, &Position_Y, &POS_Y) || !POS_Y_OK) {
     cout << "Position Y sensor faulty\n";
-    if (VEL_Y_OK) {
-      POS_Y -=  T * VYP;
-    } else {
+    // if (VEL_Y_OK) {
+    //   POS_Y = PYP -  T * VYP;
+    // } else {
       POS_Y = simulated_values[1];
-    }
+    // }
   }
-  if (!Sensor_Update(&VEL_X_OK, &Velocity_X, &VEL_X)) {
+  if (!Sensor_Update(&VEL_X_OK, &Velocity_X, &VEL_X) || !VEL_X_OK) {
     // cout << "Velocity X sensor faulty\n";
     // cout << POS_X << "\n";
     // cout << POS_X << " ; " << PXP << "\n";
     // cout << "actual Velocity_X: " << VEL_X << " estimated Vel X: " << (POS_X - OLD_POS_X_DATA.back())<< " Difference: " << (VEL_X)/(POS_X - OLD_POS_X_DATA.back()) << "\n";
+    cout << "Simulated Velocity X:" << simulated_values[2] << " Actual Velocity X:" << VEL_X << " difference:" << simulated_values[2] - VEL_X << "\n";
     // cout << "actual Velocity_X: " << VEL_X << " estimated Vel X: " << (POS_X - PXP)/T<< "\n";
     if (POS_X_OK) {
       // cout << "sanity check\n";
@@ -401,7 +403,7 @@ void Update(void) {
       VEL_X = simulated_values[2];
     }
   }
-  if (!Sensor_Update(&VEL_Y_OK, &Velocity_Y, &VEL_Y)) {
+  if (!Sensor_Update(&VEL_Y_OK, &Velocity_Y, &VEL_Y) || !VEL_Y_OK) {
     cout << "Velocity Y sensor faulty\n";
     if (POS_Y_OK) {
       VEL_Y =  -(POS_Y - PYP)/T;
@@ -409,7 +411,7 @@ void Update(void) {
       VEL_Y = simulated_values[3];
     }
   }
-  if (!Angle_Update()) {
+  if (!Angle_Update() || !ANGLE_OK) {
     ANGLE = simulated_values[4];
   }
 
@@ -500,19 +502,24 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
   
 }
 
-int stage = 1;
-
 void Lander_Control(void) {
   // call the sensor status and update sensors
   // update the data based on robust calls
   // use global data arrays[-1] to decide where to go
   // store comands given to global (keep all thruster commands between [0.1, 0.9] and keep exclusive from rotation in which case thuster power should be 0)
   // add 1 to Tick counter at the very end of the code
+ 
+ if (COUNTER > 30) {
+  POS_X_OK = 0;
+  // POS_Y_OK = 0;
+  VEL_X_OK = 0;
+  // VEL_Y_OK = 0;
+  // ANGLE_OK = 0;
+  // SONAR_OK = 0;
+ }
 
  double VXlim;
  double VYlim;
-
- cout << POS_Y << "\n";
 
  // Set velocity limits depending on distance to platform.
  // If the module is far from the platform allow it to
@@ -547,58 +554,11 @@ void Lander_Control(void) {
  // effect, i.e. the rotation angle does not accumulate
  // for successive calls.
 
- double distToDesiredDestination;
-
- if (stage == 1) {
-  if (Angle()>1&&Angle()<359)
-  {
-    // Call Flight_Control to upright lander
-    Flight_Control(0.0, 0.0, true);
-    // if (Angle()>=180) Rotate(360-Angle());
-    // else Rotate(-Angle());
-    // return;
-  }else{
-    stage++;
-  }
- }
-
- if (stage == 2) {
-  // Ceilling of 55 will clear everything
-  // accend
-  //   POS_Y
-  
-  if (POS_Y > 45) {
-    Flight_Control(0.0, 10.0, false);
-  } else {
-    stage++;
-  }
- }
-
- if (stage == 3) {
-    if (VEL_Y > 0.1) {
-        Flight_Control(0.0, 0.0, false);
-    } else {
-        stage++;
-    }
- }
-
-//platform landing buffer of 5
-
- if (stage == 4) {
-    double acceleration = 8.77;
-    double thruster_turning_angle = 45.2 * PI / 180; // 30.45 for main thruster
-    double alpha = ANGLE_OK ? 1 : 2;
-    double turning_buffer =  thruster_turning_angle / 0.075 * VEL_X * alpha;
-    double critical_distance = pow(VEL_X,2.0) / (2 * acceleration) + turning_buffer;
-
-    if (abs(POS_X - PLAT_X) > critical_distance) {
-        Flight_Control(((POS_X - PLAT_X) < 0 ) ? 20 : -20, 0.0, false);
-    } else {
-        Flight_Control(0.0,0.0, false);
-    }
- }
-
- if (stage == 5) {
+ if (Angle()>1&&Angle()<359)
+ {
+  if (Angle()>=180) Rotate(360-Angle());
+  else Rotate(-Angle());
+  return;
  }
 
 
@@ -609,31 +569,49 @@ void Lander_Control(void) {
   // Lander is to the LEFT of the landing platform, use Right thrusters to move
   // lander to the left.
   Left_Thruster(0);	// Make sure we're not fighting ourselves here!
-  if (VEL_X>(-VXlim)) Right_Thruster((VXlim+fmin(0,VEL_X))/VXlim);
+  LT_COMMAND = 0;
+  if (VEL_X>(-VXlim)) {
+    Right_Thruster(min(0.5,(VXlim+fmin(0,VEL_X))/VXlim));
+    RT_COMMAND = min(0.5,(VXlim+fmin(0,VEL_X))/VXlim);
+  }
   else
   {
    // Exceeded velocity limit, brake
    Right_Thruster(0);
-   Left_Thruster(fabs(VXlim-VEL_X));
+   RT_COMMAND = 0;
+   Left_Thruster(min(0.5,fabs(VXlim-VEL_X)));
+   LT_COMMAND = min(0.5, fabs(VXlim-VEL_X));
   }
  }
  else
  {
   // Lander is to the RIGHT of the landing platform, opposite from above
   Right_Thruster(0);
-  if (VEL_X<VXlim) Left_Thruster((VXlim-fmax(0,VEL_X))/VXlim);
+  RT_COMMAND = 0;
+  if (VEL_X<VXlim) {
+    Left_Thruster(min(0.5,(VXlim-fmax(0,VEL_X))/VXlim));
+    LT_COMMAND = min(0.5,(VXlim-fmax(0,VEL_X))/VXlim);
+  }
   else
   {
    Left_Thruster(0);
-   Right_Thruster(fabs(VXlim-VEL_X));
+   LT_COMMAND = 0;
+   Right_Thruster(min(0.5,fabs(VXlim-VEL_X)));
+   RT_COMMAND = min(0.5, fabs(VXlim-VEL_X));
   }
  }
 
  // Vertical adjustments. Basically, keep the module below the limit for
  // vertical velocity and allow for continuous descent. We trust
  // Safety_Override() to save us from crashing with the ground.
- if (VEL_Y<VYlim) Main_Thruster(1.0);
- else Main_Thruster(0);
+ if (VEL_Y<VYlim) {
+  Main_Thruster(0.5);
+  MT_COMMAND = 0.5;
+ }
+ else {
+  Main_Thruster(0);
+  MT_COMMAND = 0;
+ }
 }
 
 void Safety_Override(void) {
@@ -708,19 +686,27 @@ void Safety_Override(void) {
  { // Too close to a surface in the horizontal direction
   if (Angle()>1&&Angle()<359)
   {
-   if (Angle()>=180) Rotate(360-Angle());
+   if (Angle()>=180) {
+    Rotate(360-Angle());
+    ROTATE_COMMAND = 360-Angle();
+   }
    else Rotate(-Angle());
+   ROTATE_COMMAND = -Angle();
    return;
   }
 
   if (VEL_X>0){
-   Right_Thruster(1.0);
+   Right_Thruster(0.5);
+   RT_COMMAND = 0.5;
    Left_Thruster(0.0);
+   LT_COMMAND = 0;
   }
   else
   {
-   Left_Thruster(1.0);
+   Left_Thruster(0.5);
+   LT_COMMAND = 0.5;
    Right_Thruster(0.0);
+   RT_COMMAND = 0;
   }
  }
 
@@ -742,16 +728,22 @@ void Safety_Override(void) {
  {
   if (Angle()>1||Angle()>359)
   {
-   if (Angle()>=180) Rotate(360-Angle());
+   if (Angle()>=180) {
+    Rotate(360-Angle());
+    ROTATE_COMMAND = 360 - Angle();
+   }
    else Rotate(-Angle());
+   ROTATE_COMMAND = -Angle();
    return;
   }
   if (VEL_Y>2.0){
    Main_Thruster(0.0);
+   MT_COMMAND = 0;
   }
   else
   {
-   Main_Thruster(1.0);
+   Main_Thruster(0.5);
+   MT_COMMAND = 0.5;
   }
  }
 }

@@ -5,14 +5,14 @@ ______________________________________________________________________
 
 Team name:
 
-Name 1 (last, first):
-Student number 1:
+Name 1 (last, first): Pandya, Malhar
+Student number 1: 1005893008
 
-Name 2 (last, first):
-Student number 2:
+Name 2 (last, first): Liu, Alton
+Student number 2: 1006701222
 
-Name 3 (last, first):
-Student number 3:
+Name 3 (last, first): Han, Jackson
+Student number 3: 1005412572
 
 (special: Lose 5 marks for not completing the above information)
 _______________________________________________________________________
@@ -23,8 +23,8 @@ you think the task could be completed
 
 a) The program can land the craft safely in mode '1'
   
-   - for the 'easy.ppm' map (yes/no)
-   - for the 'hard.ppm' map (yes/no)
+   - for the 'easy.ppm' map (yes/no) 
+   - for the 'hard.ppm' map (yes/no) 
 
    If it fails, describe the conditions in which it fails and how
    you think this could be resolved
