@@ -488,10 +488,11 @@ void Turn_Burn(int THRUSTER, int DIR)
 {
   // THRUSTER: 1 = MAIN, 2 = LEFT, 3 = RIGHT
   // DIR: 1 = DOWN, 2 = LEFT, 3 = RIGHT, 4 = UP
+
+  // Determine the offset so the when the new main thruster is pointed down, the current angle is 0
   double ANGLE_OFFSET = 0;
   double POWER = 0.5;
   bool SIDETHRUSTER = 1;
-
   if (THRUSTER == 2)
   {
     ANGLE_OFFSET = 90;
@@ -504,9 +505,27 @@ void Turn_Burn(int THRUSTER, int DIR)
   {
     SIDETHRUSTER = 0;
   }
+  double CURRENT_ANGLE = fmod(ANGLE + ANGLE_OFFSET, 360);
+  if (CURRENT_ANGLE < 0)
+  {
+    CURRENT_ANGLE += 360;
+  }
 
+  // Determine target angle based on desired direction
   double TARGET_ANGLE = 0;
+  
   if (DIR == 2)
+  {
+    if (SIDETHRUSTER)
+    {
+      TARGET_ANGLE = 315.2;
+    }
+    else
+    {
+      TARGET_ANGLE = 300.45;
+    }
+  }
+  else if (DIR == 3)
   {
     if (SIDETHRUSTER)
     {
@@ -514,17 +533,9 @@ void Turn_Burn(int THRUSTER, int DIR)
     }
     else
     {
-
+      TARGET_ANGLE = 59.55;
     }
   }
-  
-
-  double CURRENT_ANGLE = fmod(ANGLE + ANGLE_OFFSET, 360);
-  if (CURRENT_ANGLE < 0)
-  {
-    CURRENT_ANGLE += 360;
-  }
-
 }
 
 void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
