@@ -301,7 +301,7 @@ bool Angle_Update(void)
       HAS_EDGE = 1;
     }
 
-    //cout << "Angle before conversion: " << angle_readings[i] << "\n";
+    // cout << "Angle before conversion: " << angle_readings[i] << "\n";
   }
   
   // CODE THAT MODIFIES THE ANGLES
@@ -310,7 +310,7 @@ bool Angle_Update(void)
     for (int i = 0; i < SENSOR_COUNT; i++)
     {
       angle_readings[i] = fmod(angle_readings[i] + 90, 360);
-      //cout << "Angle after conversion: " << angle_readings[i] << "\n";
+      // cout << "Angle after conversion: " << angle_readings[i] << "\n";
     }
   }
   
@@ -588,6 +588,7 @@ void Turn_Burn(int THRUSTER, int DIR)
 } 
 
 void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
+// 0, 0 means decend, x, 0 means maintain elavation
 {
   cout << "Desired_Vel_X: " << Desired_Vel_X << " Desired_Vel_Y: " << Desired_Vel_Y << "\n";
   cout << "VEL_X: " << VEL_X << " VEL__Y: " << VEL_Y << "\n";
@@ -618,7 +619,58 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
   int THRUSTER = FLIGHT_MODE; // NOTE: for now, THRUSTER = FLIGHT_MODE because flight mode numbering corresponds to THRUSTER numbering in Turn_Burn()
   if (FLIGHT_MODE == 0)
   {
-    return;
+    // If DVY is not zero
+      // VEL_Y - Desired_Vel_Y < 0 We want to go up 
+      // else turn thrusters off 
+    // else DVY is zero and DVX is zero 
+      // turn off thrusters, we want to loss up y vel, slowdown due to gravity
+    // else (DVX is not zero)
+      // turn main to G_ACCEL/ MT_ACCEL (so we hover as we translate)
+      // if VEL_X - Desired_Vel_X > 0 ? left thruster(0.5): right thruster(0.5) 
+
+    
+    if (VEL_X - Desired_Vel_X > 0.0){
+      Left_Thruster(0.0);
+      Right_Thruster(0.5);
+    } else {
+      Left_Thruster(0.5);
+      Right_Thruster(0.0);
+    }
+    
+    if (VEL_Y - Desired_Vel_Y < 0.0){
+      Main_Thruster(0.5); // Side thrusters should be off
+    } else {
+      Main_Thruster(0.0);
+    }
+    // if (Desired_Vel_Y != 0.0){
+    //   if (VEL_Y - Desired_Vel_Y < 0.0){
+    //     Main_Thruster(0.5); // Side thrusters should be off
+    //   } else {
+    //     Main_Thruster(0.0);
+    //   }
+
+    // } else if (Desired_Vel_X == 0.0 && Desired_Vel_Y == 0.0 ) {
+    //   cout << "balancing " << VEL_X << "\n" ;
+    //   Main_Thruster(0.0);
+    //   if (VEL_X - Desired_Vel_X > 0.0){
+    //     Left_Thruster(0.0);
+    //     Right_Thruster(0.5);
+    //   } else {
+    //     Left_Thruster(0.5);
+    //     Right_Thruster(0.0);
+    //   }
+    // } else {
+    //   Main_Thruster(G_ACCEL/MT_ACCEL);
+    //   if (VEL_X - Desired_Vel_X > 0){
+    //     Left_Thruster(0.5);
+    //     Right_Thruster(0.0);
+    //   } else {
+    //     Left_Thruster(0.0);
+    //     Right_Thruster(0.5);
+    //   }
+    // }
+
+    // turn main thrusters to hover by G_ / MT_A
   }
   else if (FLIGHT_MODE == 3)
   {
@@ -682,13 +734,13 @@ void Lander_Control(void) {
  else if (fabs(POS_X-PLAT_X)>100) VXlim=15;
  else VXlim=5;
 
- if (PLAT_Y-POS_Y>200) VYlim=-5;
- else if (PLAT_Y-POS_Y>150) VYlim=-3;  // These are negative because they
- else if (PLAT_Y-POS_Y>50) VYlim=-2;
- else VYlim=-0.1;				       // limit descent velocity
+ if (PLAT_Y-POS_Y>200) VYlim=-20; // 5
+ else if (PLAT_Y-POS_Y>150) VYlim=-10; // 3  // These are negative because they
+ else if (PLAT_Y-POS_Y>50) VYlim=-5; // 2
+ else VYlim=-5; // 0.1				       // limit descent velocity
 
  // Ensure we will be OVER the platform when we land
- if (fabs(PLAT_X-POS_X)/fabs(VEL_X)>1.25*fabs(PLAT_Y-POS_Y)/fabs(VEL_Y)) VYlim=0;
+//  if (fabs(PLAT_X-POS_X)/fabs(VEL_X)>1.25*fabs(PLAT_Y-POS_Y)/fabs(VEL_Y)) VYlim=0;
 
  // IMPORTANT NOTE: The code below assumes all components working
  // properly. IT MAY OR MAY NOT BE USEFUL TO YOU when components
@@ -753,20 +805,23 @@ void Lander_Control(void) {
     if (abs(POS_X - PLAT_X) > critical_distance) {
         if ((POS_X - PLAT_X) > 20)
         {
+          cout << "0";
           Flight_Control(-20.0, 0.0, false);
         }
         else if ((POS_X - PLAT_X) < -20)
         {
+          cout << "1";
           Flight_Control(20.0, 0.0, false);
         }
         else
         {
-          Flight_Control(0.0, 0.0, false);
+          cout << "2" << "VYLim: " << VYlim << "\n";
+          Flight_Control(0.0, VYlim, false);
         }
         
-        //Flight_Control(((POS_X - PLAT_X) < 0) ? 20 : -20, 0.0, false);
     } else {
-        Flight_Control(0.0,0.0, false);
+        cout << "3";
+        Flight_Control(0.0, VYlim, false);
     }
     if (abs(POS_X - PLAT_X) < 20 && VEL_X < 3 && VEL_X > -3) { // Over platform
         cout << "LAST PART OF STAGE 4: " << "\n";
@@ -781,7 +836,7 @@ void Lander_Control(void) {
 
  if (stage == 5) {
     cout << "STAGE: " << stage << "\n";
-    Flight_Control(0.0,-2, true);
+    Flight_Control(0.0,-5, true);
  }
 
 /*
@@ -847,7 +902,7 @@ void Safety_Override(void) {
   not corresponding to the landing platform,
   carry out speed corrections using the thrusters
 **************************************************/
-
+ return;
  double DistLimit;
  double Vmag;
  double dmin;
