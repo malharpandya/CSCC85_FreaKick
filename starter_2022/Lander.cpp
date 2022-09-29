@@ -203,9 +203,12 @@ double RT_COMMAND; // [0 ,1]
 double ROTATE_COMMAND; // 0 if not rotating, or howewer much is left to rotate (in degrees) in which case all thrusters are 0
 
 // CONSISTENCY AND NOISE REFINEMENT
-int SENSOR_COUNT = 30;
-double VARIANCE_THRESHOLD = 1;
+int SENSOR_COUNT = 100000;
+double VARIANCE_THRESHOLD = 0.05;
+double T = 0.025;
 
+double TestT = 0.025;
+// 02385
 // HELPERS
 
 
@@ -219,12 +222,12 @@ void Simulate(double* address) {
   double PA = ANGLE;
   double AX = MT_ACCEL*MT_COMMAND*sin(PA) + (LT_ACCEL*LT_COMMAND - RT_ACCEL*RT_COMMAND)*cos(PA); // 0 if in rotation
   double AY = (G_ACCEL - MT_ACCEL*MT_COMMAND*cos(PA)) + (LT_ACCEL*LT_COMMAND - RT_ACCEL*RT_COMMAND)*sin(PA); // G if in rotation
-  double DX = PVX*T_STEP + 0.5*AX*T_STEP*T_STEP;
-  double DY = PVY*T_STEP + 0.5*AY*T_STEP*T_STEP;
+  double DX = PVX*T + 0.5*AX*TestT*TestT;
+  double DY = PVY*T + 0.5*AY*TestT*TestT;
   double CPX = PPX + DX;
-  double CPY = PPY + DY;
-  double CVX = PVX + AX*T_STEP;
-  double CVY = PVY + AY*T_STEP;
+  double CPY = PPY - DY;
+  double CVX = PVX + AX*TestT;
+  double CVY = PVY - AY*TestT;
   double CA = PA + ROTATE_COMMAND; // Need to account for max rotate rate
   double max_rotate_degrees = MAX_ROT_RATE*180/PI;
   int sign = (ROTATE_COMMAND > 0) - (ROTATE_COMMAND < 0); // 1 if positive, -1 if negative, 0 if 0
@@ -241,6 +244,8 @@ void Simulate(double* address) {
 // SENSOR CONSISTENCY AND DENOISING
 // Detect sensor failure and put denoised value into global variable if not faulty
 bool Sensor_Update(bool *SENSOR_STATUS, double (*Sensor_Call)(void), double *SENSOR) {
+  if (SENSOR_STATUS == 0) {return 0;}
+  
   // Call sensor multiple times and store it in an array
   double sensor_readings[SENSOR_COUNT];
   double sensor_reading_total = 0;
@@ -259,9 +264,12 @@ bool Sensor_Update(bool *SENSOR_STATUS, double (*Sensor_Call)(void), double *SEN
   for (int i=0; i < SENSOR_COUNT; i++) {
     variance += pow((sensor_readings[i] - mean)/max, 2);
   }
+  variance = variance / SENSOR_COUNT;
+  // cout << "Variance: " << variance << "\n";
   // Check if sensor is faulty
-  if (variance >= VARIANCE_THRESHOLD) {
-    SENSOR_STATUS = 0;
+  if (variance >= VARIANCE_THRESHOLD) { // TODO make sure if 0 status don't just it a chance to be made correct
+    *SENSOR_STATUS = 0;
+    cout << "fail\n";
     return 0; // sensor fail
   }
   *SENSOR = mean;
@@ -338,6 +346,8 @@ bool Angle_Update(void)
   return 1;
 }
 
+deque<double> OLD_POS_X_DATA;
+
 // DATA UPDATING
 void Update(void) {
   // Generate simulation first before you update global variable with current denoised sensor reading
@@ -346,36 +356,55 @@ void Update(void) {
   if (COUNTER > 0) {
     Simulate(simulated_values);
   }
+
   double PXP = POS_X;
   double PYP = POS_Y;
   double VXP = VEL_X;
   double VYP = VEL_Y;
   double AP = ANGLE;
   // WE ASSUME FIRST BUNCH OF TICKS DO NOT CAUSE ANY SENSOR FAILURES
+  // cout << "Calling Sensor Updates\n";
+
   if (!Sensor_Update(&POS_X_OK, &Position_X, &POS_X)) {
+    cout << "Position X sensor faulty\n";
+    cout << "actual position x:" << POS_X << " estimated position X: " << PXP +  T * VXP << " Difference: " << abs((PXP +  T * VXP)-POS_X)<<"\n";
     if (VEL_X_OK) {
-      POS_X +=  T_STEP * VXP;
+      cout << "update\n";
+      POS_X = PXP +  T * VXP;
     } else {
       POS_X = simulated_values[0];
     }
   }
+  
+  OLD_POS_X_DATA.push_front(POS_X);
+  if (OLD_POS_X_DATA.size() == 3 + 1){ OLD_POS_X_DATA.pop_back(); }
+
+
   if (!Sensor_Update(&POS_Y_OK, &Position_Y, &POS_Y)) {
+    cout << "Position Y sensor faulty\n";
     if (VEL_Y_OK) {
-      POS_Y -=  T_STEP * VYP;
+      POS_Y -=  T * VYP;
     } else {
       POS_Y = simulated_values[1];
     }
   }
   if (!Sensor_Update(&VEL_X_OK, &Velocity_X, &VEL_X)) {
+    // cout << "Velocity X sensor faulty\n";
+    // cout << POS_X << "\n";
+    // cout << POS_X << " ; " << PXP << "\n";
+    // cout << "actual Velocity_X: " << VEL_X << " estimated Vel X: " << (POS_X - OLD_POS_X_DATA.back())<< " Difference: " << (VEL_X)/(POS_X - OLD_POS_X_DATA.back()) << "\n";
+    // cout << "actual Velocity_X: " << VEL_X << " estimated Vel X: " << (POS_X - PXP)/T<< "\n";
     if (POS_X_OK) {
-      VEL_X =  (POS_X - PXP)/T_STEP;
+      // cout << "sanity check\n";
+      VEL_X =  (POS_X - PXP)/T;
     } else {
       VEL_X = simulated_values[2];
     }
   }
   if (!Sensor_Update(&VEL_Y_OK, &Velocity_Y, &VEL_Y)) {
+    cout << "Velocity Y sensor faulty\n";
     if (POS_Y_OK) {
-      VEL_Y =  -(POS_Y - PYP)/T_STEP;
+      VEL_Y =  -(POS_Y - PYP)/T;
     } else {
       VEL_Y = simulated_values[3];
     }
@@ -461,7 +490,7 @@ void Turn_Burn(int THRUSTER, int DIR)
   // DIR: 1 = DOWN, 2 = LEFT, 3 = RIGHT, 4 = UP
 }
 
-void Flight_Control(void)
+void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
 {
   int FLIGHT_MODE = Flight_Mode();
   if (FLIGHT_MODE == 0)
@@ -470,6 +499,8 @@ void Flight_Control(void)
   }
   
 }
+
+int stage = 1;
 
 void Lander_Control(void) {
   // call the sensor status and update sensors
@@ -481,6 +512,8 @@ void Lander_Control(void) {
  double VXlim;
  double VYlim;
 
+ cout << POS_Y << "\n";
+
  // Set velocity limits depending on distance to platform.
  // If the module is far from the platform allow it to
  // move faster, decrease speed limits as the module
@@ -491,16 +524,16 @@ void Lander_Control(void) {
  Update();
  COUNTER ++;
   
- if (fabs(Position_X()-PLAT_X)>200) VXlim=25;
- else if (fabs(Position_X()-PLAT_X)>100) VXlim=15;
+ if (fabs(POS_X-PLAT_X)>200) VXlim=25;
+ else if (fabs(POS_X-PLAT_X)>100) VXlim=15;
  else VXlim=5;
 
- if (PLAT_Y-Position_Y()>200) VYlim=-20;
- else if (PLAT_Y-Position_Y()>100) VYlim=-10;  // These are negative because they
+ if (PLAT_Y-POS_Y>200) VYlim=-20;
+ else if (PLAT_Y-POS_Y>100) VYlim=-10;  // These are negative because they
  else VYlim=-4;				       // limit descent velocity
 
  // Ensure we will be OVER the platform when we land
- if (fabs(PLAT_X-Position_X())/fabs(Velocity_X())>1.25*fabs(PLAT_Y-Position_Y())/fabs(Velocity_Y())) VYlim=0;
+ if (fabs(PLAT_X-POS_X)/fabs(VEL_X)>1.25*fabs(PLAT_Y-POS_Y)/fabs(VEL_Y)) VYlim=0;
 
  // IMPORTANT NOTE: The code below assumes all components working
  // properly. IT MAY OR MAY NOT BE USEFUL TO YOU when components
@@ -514,44 +547,92 @@ void Lander_Control(void) {
  // effect, i.e. the rotation angle does not accumulate
  // for successive calls.
 
- if (Angle()>1&&Angle()<359)
- {
-  if (Angle()>=180) Rotate(360-Angle());
-  else Rotate(-Angle());
-  return;
+ double distToDesiredDestination;
+
+ if (stage == 1) {
+  if (Angle()>1&&Angle()<359)
+  {
+    // Call Flight_Control to upright lander
+    Flight_Control(0.0, 0.0, true);
+    // if (Angle()>=180) Rotate(360-Angle());
+    // else Rotate(-Angle());
+    // return;
+  }else{
+    stage++;
+  }
  }
+
+ if (stage == 2) {
+  // Ceilling of 55 will clear everything
+  // accend
+  //   POS_Y
+  
+  if (POS_Y > 45) {
+    Flight_Control(0.0, 10.0, false);
+  } else {
+    stage++;
+  }
+ }
+
+ if (stage == 3) {
+    if (VEL_Y > 0.1) {
+        Flight_Control(0.0, 0.0, false);
+    } else {
+        stage++;
+    }
+ }
+
+//platform landing buffer of 5
+
+ if (stage == 4) {
+    double acceleration = 8.77;
+    double thruster_turning_angle = 45.2 * PI / 180; // 30.45 for main thruster
+    double alpha = ANGLE_OK ? 1 : 2;
+    double turning_buffer =  thruster_turning_angle / 0.075 * VEL_X * alpha;
+    double critical_distance = pow(VEL_X,2.0) / (2 * acceleration) + turning_buffer;
+
+    if (abs(POS_X - PLAT_X) > critical_distance) {
+        Flight_Control(((POS_X - PLAT_X) < 0 ) ? 20 : -20, 0.0, false);
+    } else {
+        Flight_Control(0.0,0.0, false);
+    }
+ }
+
+ if (stage == 5) {
+ }
+
 
  // Module is oriented properly, check for horizontal position
  // and set thrusters appropriately.
- if (Position_X()>PLAT_X)
+ if (POS_X>PLAT_X)
  {
   // Lander is to the LEFT of the landing platform, use Right thrusters to move
   // lander to the left.
   Left_Thruster(0);	// Make sure we're not fighting ourselves here!
-  if (Velocity_X()>(-VXlim)) Right_Thruster((VXlim+fmin(0,Velocity_X()))/VXlim);
+  if (VEL_X>(-VXlim)) Right_Thruster((VXlim+fmin(0,VEL_X))/VXlim);
   else
   {
    // Exceeded velocity limit, brake
    Right_Thruster(0);
-   Left_Thruster(fabs(VXlim-Velocity_X()));
+   Left_Thruster(fabs(VXlim-VEL_X));
   }
  }
  else
  {
   // Lander is to the RIGHT of the landing platform, opposite from above
   Right_Thruster(0);
-  if (Velocity_X()<VXlim) Left_Thruster((VXlim-fmax(0,Velocity_X()))/VXlim);
+  if (VEL_X<VXlim) Left_Thruster((VXlim-fmax(0,VEL_X))/VXlim);
   else
   {
    Left_Thruster(0);
-   Right_Thruster(fabs(VXlim-Velocity_X()));
+   Right_Thruster(fabs(VXlim-VEL_X));
   }
  }
 
  // Vertical adjustments. Basically, keep the module below the limit for
  // vertical velocity and allow for continuous descent. We trust
  // Safety_Override() to save us from crashing with the ground.
- if (Velocity_Y()<VYlim) Main_Thruster(1.0);
+ if (VEL_Y<VYlim) Main_Thruster(1.0);
  else Main_Thruster(0);
 }
 
@@ -591,8 +672,8 @@ void Safety_Override(void) {
  // Establish distance threshold based on lander
  // speed (we need more time to rectify direction
  // at high speed)
- Vmag=Velocity_X()*Velocity_X();
- Vmag+=Velocity_Y()*Velocity_Y();
+ Vmag=VEL_X*VEL_X;
+ Vmag+=VEL_Y*VEL_Y;
 
  DistLimit=fmax(75,Vmag);
 
@@ -600,7 +681,7 @@ void Safety_Override(void) {
  // safety override (close to the landing platform
  // the Control_Policy() should be trusted to
  // safely land the craft)
- if (fabs(PLAT_X-Position_X())<150&&fabs(PLAT_Y-Position_Y())<150) return;
+ if (fabs(PLAT_X-POS_X)<150&&fabs(PLAT_Y-POS_Y)<150) return;
 
  // Determine the closest surfaces in the direction
  // of motion. This is done by checking the sonar
@@ -610,7 +691,7 @@ void Safety_Override(void) {
 
  // Horizontal direction.
  dmin=1000000;
- if (Velocity_X()>0)
+ if (VEL_X>0)
  {
   for (int i=5;i<14;i++)
    if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
@@ -623,7 +704,7 @@ void Safety_Override(void) {
  // Determine whether we're too close for comfort. There is a reason
  // to have this distance limit modulated by horizontal speed...
  // what is it?
- if (dmin<DistLimit*fmax(.25,fmin(fabs(Velocity_X())/5.0,1)))
+ if (dmin<DistLimit*fmax(.25,fmin(fabs(VEL_X)/5.0,1)))
  { // Too close to a surface in the horizontal direction
   if (Angle()>1&&Angle()<359)
   {
@@ -632,7 +713,7 @@ void Safety_Override(void) {
    return;
   }
 
-  if (Velocity_X()>0){
+  if (VEL_X>0){
    Right_Thruster(1.0);
    Left_Thruster(0.0);
   }
@@ -645,7 +726,7 @@ void Safety_Override(void) {
 
  // Vertical direction
  dmin=1000000;
- if (Velocity_Y()>5)      // Mind this! there is a reason for it...
+ if (VEL_Y>5)      // Mind this! there is a reason for it...
  {
   for (int i=0; i<5; i++)
    if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
@@ -665,7 +746,7 @@ void Safety_Override(void) {
    else Rotate(-Angle());
    return;
   }
-  if (Velocity_Y()>2.0){
+  if (VEL_Y>2.0){
    Main_Thruster(0.0);
   }
   else
