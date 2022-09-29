@@ -644,9 +644,13 @@ void Lander_Control(void) {
     } else {
         Flight_Control(0.0,0.0, false);
     }
+    if (abs(POS_X - PLAT_X) < 0.1 && VEL_X < 3) { // Over platform
+        stage ++;
+    }
  }
 
  if (stage == 5) {
+    Flight_Control(0.0, VYlim, false);
  }
 
 
