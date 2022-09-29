@@ -488,6 +488,43 @@ void Turn_Burn(int THRUSTER, int DIR)
 {
   // THRUSTER: 1 = MAIN, 2 = LEFT, 3 = RIGHT
   // DIR: 1 = DOWN, 2 = LEFT, 3 = RIGHT, 4 = UP
+  double ANGLE_OFFSET = 0;
+  double POWER = 0.5;
+  bool SIDETHRUSTER = 1;
+
+  if (THRUSTER == 2)
+  {
+    ANGLE_OFFSET = 90;
+  }
+  else if (THRUSTER == 3)
+  {
+    ANGLE_OFFSET = -90;
+  }
+  else
+  {
+    SIDETHRUSTER = 0;
+  }
+
+  double TARGET_ANGLE = 0;
+  if (DIR == 2)
+  {
+    if (SIDETHRUSTER)
+    {
+      TARGET_ANGLE = 44.8;
+    }
+    else
+    {
+
+    }
+  }
+  
+
+  double CURRENT_ANGLE = fmod(ANGLE + ANGLE_OFFSET, 360);
+  if (CURRENT_ANGLE < 0)
+  {
+    CURRENT_ANGLE += 360;
+  }
+
 }
 
 void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
@@ -495,7 +532,7 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
   int FLIGHT_MODE = Flight_Mode();
   if (FLIGHT_MODE == 0)
   {
-    /* code */
+    return;
   }
   
 }
