@@ -495,7 +495,7 @@ void Turn_Burn(int THRUSTER, int DIR)
   double POWER = 0.5;
   bool SIDETHRUSTER = 1;
 
-  if (stage < 4)
+  if (DIR == 1 || DIR == 4)//(stage < 4)
   {
     POWER = 1;
   }
@@ -569,7 +569,7 @@ void Turn_Burn(int THRUSTER, int DIR)
     Left_Thruster(0);
     Right_Thruster(0);
 
-    // Rotate to target angle (don't use thrust this tick)    
+    // Rotate to target angle (don't use thrust this tick)
     double ROT_DEG_SIGNED = TARGET_ANGLE - CURRENT_ANGLE;
     if (ROT_DEG_SIGNED > 180)
     {
@@ -588,7 +588,6 @@ void Turn_Burn(int THRUSTER, int DIR)
 } 
 
 void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
-// 0, 0 means decend, x, 0 means maintain elavation
 {
   cout << "Desired_Vel_X: " << Desired_Vel_X << " Desired_Vel_Y: " << Desired_Vel_Y << "\n";
   cout << "VEL_X: " << VEL_X << " VEL__Y: " << VEL_Y << "\n";
@@ -616,18 +615,9 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
   
   int FLIGHT_MODE = Flight_Mode();
   int DIR;
-  int THRUSTER = FLIGHT_MODE; // NOTE: for now, THRUSTER = FLIGHT_MODE because flight mode numbering corresponds to THRUSTER numbering in Turn_Burn()
+  int THRUSTER = FLIGHT_MODE;
   if (FLIGHT_MODE == 0)
   {
-    // If DVY is not zero
-      // VEL_Y - Desired_Vel_Y < 0 We want to go up 
-      // else turn thrusters off 
-    // else DVY is zero and DVX is zero 
-      // turn off thrusters, we want to loss up y vel, slowdown due to gravity
-    // else (DVX is not zero)
-      // turn main to G_ACCEL/ MT_ACCEL (so we hover as we translate)
-      // if VEL_X - Desired_Vel_X > 0 ? left thruster(0.5): right thruster(0.5) 
-
     
     if (VEL_X - Desired_Vel_X > 0.0){
       Left_Thruster(0.0);
@@ -638,41 +628,13 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
     }
     
     if (VEL_Y - Desired_Vel_Y < 0.0){
-      Main_Thruster(0.5); // Side thrusters should be off
+      Main_Thruster(1.0); // Side thrusters should be off
     } else {
       Main_Thruster(0.0);
     }
-    // if (Desired_Vel_Y != 0.0){
-    //   if (VEL_Y - Desired_Vel_Y < 0.0){
-    //     Main_Thruster(0.5); // Side thrusters should be off
-    //   } else {
-    //     Main_Thruster(0.0);
-    //   }
 
-    // } else if (Desired_Vel_X == 0.0 && Desired_Vel_Y == 0.0 ) {
-    //   cout << "balancing " << VEL_X << "\n" ;
-    //   Main_Thruster(0.0);
-    //   if (VEL_X - Desired_Vel_X > 0.0){
-    //     Left_Thruster(0.0);
-    //     Right_Thruster(0.5);
-    //   } else {
-    //     Left_Thruster(0.5);
-    //     Right_Thruster(0.0);
-    //   }
-    // } else {
-    //   Main_Thruster(G_ACCEL/MT_ACCEL);
-    //   if (VEL_X - Desired_Vel_X > 0){
-    //     Left_Thruster(0.5);
-    //     Right_Thruster(0.0);
-    //   } else {
-    //     Left_Thruster(0.0);
-    //     Right_Thruster(0.5);
-    //   }
-    // }
-
-    // turn main thrusters to hover by G_ / MT_A
   }
-  else if (FLIGHT_MODE == 3)
+  else
   {
     double Vel_Y_Diff = Desired_Vel_Y - VEL_Y;
     double Vel_X_Diff = Desired_Vel_X - VEL_X;
@@ -697,10 +659,10 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
       // Desired direction is down
       DIR = 1;
     }
-  }
+  } 
 
   //cout << "FLIGHT MODE: " << FLIGHT_MODE << "\n";
-  
+
   if (FLIGHT_MODE != 0)
   {
     cout << "THRUSTER: " << THRUSTER << " DIR: " << DIR << "\n";
@@ -740,9 +702,6 @@ void Lander_Control(void) {
  else if (PLAT_Y-POS_Y>50) VYlim=-5; // 2
  else VYlim=-5; // 0.1				       // limit descent velocity
 
- // Ensure we will be OVER the platform when we land
-//  if (fabs(PLAT_X-POS_X)/fabs(VEL_X)>1.25*fabs(PLAT_Y-POS_Y)/fabs(VEL_Y)) VYlim=0;
-
  // IMPORTANT NOTE: The code below assumes all components working
  // properly. IT MAY OR MAY NOT BE USEFUL TO YOU when components
  // fail. More likely, you will need a set of case-based code
@@ -761,11 +720,7 @@ void Lander_Control(void) {
   cout << "STAGE: " << stage << "\n";
   if (Angle()>1&&Angle()<359)
   {
-    // Call Flight_Control to upright lander
     Flight_Control(0.0, 0.0, true);
-    // if (Angle()>=180) Rotate(360-Angle());
-    // else Rotate(-Angle());
-    // return;
   }else{
     stage++;
   }
@@ -773,9 +728,6 @@ void Lander_Control(void) {
 
  if (stage == 2) {
   cout << "STAGE: " << stage << "\n";
-  // Ceilling of 55 will clear everything
-  // accend
-  //   POS_Y
   
   if (POS_Y > 55) {
     Flight_Control(0.0, 10.0, false);
@@ -839,40 +791,6 @@ void Lander_Control(void) {
     cout << "STAGE: " << stage << "\n";
     Flight_Control(0.0,-5, true);
  }
-
-/*
- // Module is oriented properly, check for horizontal position
- // and set thrusters appropriately.
- if (POS_X>PLAT_X)
- {
-  // Lander is to the LEFT of the landing platform, use Right thrusters to move
-  // lander to the left.
-  Left_Thruster(0);	// Make sure we're not fighting ourselves here!
-  if (VEL_X>(-VXlim)) Right_Thruster((VXlim+fmin(0,VEL_X))/VXlim);
-  else
-  {
-   // Exceeded velocity limit, brake
-   Right_Thruster(0);
-   Left_Thruster(fabs(VXlim-VEL_X));
-  }
- }
- else
- {
-  // Lander is to the RIGHT of the landing platform, opposite from above
-  Right_Thruster(0);
-  if (VEL_X<VXlim) Left_Thruster((VXlim-fmax(0,VEL_X))/VXlim);
-  else
-  {
-   Left_Thruster(0);
-   Right_Thruster(fabs(VXlim-VEL_X));
-  }
- }
-
- // Vertical adjustments. Basically, keep the module below the limit for
- // vertical velocity and allow for continuous descent. We trust
- // Safety_Override() to save us from crashing with the ground.
- if (VEL_Y<VYlim) Main_Thruster(1.0);
- else Main_Thruster(0);*/
 }
 
 void Safety_Override(void) {
@@ -904,94 +822,4 @@ void Safety_Override(void) {
   carry out speed corrections using the thrusters
 **************************************************/
  return;
- double DistLimit;
- double Vmag;
- double dmin;
-
- // Establish distance threshold based on lander
- // speed (we need more time to rectify direction
- // at high speed)
- Vmag=VEL_X*VEL_X;
- Vmag+=VEL_Y*VEL_Y;
-
- DistLimit=fmax(75,Vmag);
-
- // If we're close to the landing platform, disable
- // safety override (close to the landing platform
- // the Control_Policy() should be trusted to
- // safely land the craft)
- if (fabs(PLAT_X-POS_X)<150&&fabs(PLAT_Y-POS_Y)<150) return;
-
- // Determine the closest surfaces in the direction
- // of motion. This is done by checking the sonar
- // array in the quadrant corresponding to the
- // ship's motion direction to find the entry
- // with the smallest registered distance
-
- // Horizontal direction.
- /*
- dmin=1000000;
- if (VEL_X>0)
- {
-  for (int i=5;i<14;i++)
-   if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
- }
- else
- {
-  for (int i=22;i<32;i++)
-   if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
- }
- // Determine whether we're too close for comfort. There is a reason
- // to have this distance limit modulated by horizontal speed...
- // what is it?
- if (dmin<DistLimit*fmax(.25,fmin(fabs(VEL_X)/5.0,1)))
- { // Too close to a surface in the horizontal direction
-  if (Angle()>1&&Angle()<359)
-  {
-   if (Angle()>=180) Rotate(360-Angle());
-   else Rotate(-Angle());
-   return;
-  }
-
-  if (VEL_X>0){
-   Right_Thruster(1.0);
-   Left_Thruster(0.0);
-  }
-  else
-  {
-   Left_Thruster(1.0);
-   Right_Thruster(0.0);
-  }
- }
-
- // Vertical direction
- dmin=1000000;
- if (VEL_Y>5)      // Mind this! there is a reason for it...
- {
-  for (int i=0; i<5; i++)
-   if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
-  for (int i=32; i<36; i++)
-   if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
- }
- else
- {
-  for (int i=14; i<22; i++)
-   if (SONAR_DIST[i]>-1&&SONAR_DIST[i]<dmin) dmin=SONAR_DIST[i];
- }
- if (dmin<DistLimit)   // Too close to a surface in the horizontal direction
- {
-  if (Angle()>1||Angle()>359)
-  {
-   if (Angle()>=180) Rotate(360-Angle());
-   else Rotate(-Angle());
-   return;
-  }
-  if (VEL_Y>2.0){
-   Main_Thruster(0.0);
-  }
-  else
-  {
-   Main_Thruster(1.0);
-  }
- }*/
 }
