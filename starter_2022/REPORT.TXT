@@ -57,26 +57,64 @@ Questions:
 1) What was the impact of having noisy sensors in your ability to
    determine the state of the craft and ultimately control it 
    properly?
-   Noise in the 
+
+   Noisy sensors meant that the state of our craft always had some uncertainty,
+   which meant that our controls, which were determined by our perceived state
+   of the craft, were also inaccurate. This meant that we constantly had to
+   reevaluate our state and flight controls so then there wouldn't be a cascade
+   of inaccuracies from both the uncertainty of our state and the noise in the 
+   controls
 
 2) Describe the technique(s) you used to deal with sensor noise
 
+   We sampled each of the sensors multiple times per tick, meaning that we
+   were sampling so fast that the expected sensor readings would not change,
+   but the noise does change. Since we assumed the noise was in a Gaussian
+   distribution, as long as we get enough samples we could simply find the mean
+   of all the samples, and the noise would be close to 0 since the mean of a
+   Gaussian distribution is 0
 
 3) Describe your strategy for dealing with thruster failures
 
+   If a thruster failed, we would assume that only 1 thruster was available,
+   which meant that we would tilt the lander to control movement. To move horizontally,
+   we tiled the craft in such a way that the acceleration
+   from the 1 thruster will cancel out gravitational acceleration while still
+   providing horizonal acceleration. This meant that we were able to direct the
+   craft to move horizontally ONLY or vertically ONLY, which massively simplified
+   the flight control system. We also ran the functioning thruster at half power
+   to cancel out the noise in the thruster controls, which we assumed had a
+   Gaussian distribution. To account for differing max thruster power between
+   the side and main thrusters, we changed the angle to ensure gravity was
+   being canceled out.
+
 4) Describe your strategy for dealing with sensor malfunctions:
 
-   - Position sensors
-   - Velocity sensors
-   - Angle
-   - Sonar
+   - Position sensors: if the corresponding velocity sensor was available for the
+   failed sensor, we would calculate our position multiplying our incremental velocity
+   with the time between velocity measurements. If velocity data was not available,
+   we would simulate the velocity based on our thruster commands, then calculate
+   position
+   - Velocity sensors: if the corresponding position sensor was available, we would
+   calculate the velocity based on the incremental change in position. If not, we
+   would simulate velocity based on our last known velocity and our current thruster
+   controls
+   - Angle: we would calculate our angle based on the last accurate angle command and
+   add the subsequent angle commands to this value
+   - Sonar: we didn't use sonar for anything so it did not matter to us if this sensor
+   failed
 
    What if you have multiple failures? what could you do if, for
    example both position and velocity sensors became inoperative?
 
+   Answered above
+
 5) What was the hardest failure type to deal with (i.e. which is
    the component, either sensor or control that makes the lander
    harder to handle?)?
+
+   The angle sensor was the hardest by far as there was no easy, noiseless way
+   to account for this failure.
 
 6) Assume a human pilot was in charge of controlling the craft 
    (i.e. the pilot has control of thrusters and rotation).
