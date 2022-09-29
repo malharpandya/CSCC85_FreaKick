@@ -208,7 +208,9 @@ int SENSOR_COUNT = 100000;
 double VARIANCE_THRESHOLD = 0.05;
 double T = 0.025;
 
-double TestT = 0.025;
+double TestT = 0.0025;
+
+double maxV = 0;
 // 02385
 // HELPERS
 
@@ -263,14 +265,15 @@ bool Sensor_Update(bool *SENSOR_STATUS, double (*Sensor_Call)(void), double *SEN
   // Calculate the variance (normalize the readings first)
   double variance = 0;
   for (int i=0; i < SENSOR_COUNT; i++) {
-    variance += pow((sensor_readings[i] - mean)/max, 2);
+    variance += pow((sensor_readings[i] - mean), 2) / pow(max + 2, 2);
   }
   variance = variance / SENSOR_COUNT;
-  // cout << "Variance: " << variance << "\n";
+  if (variance > maxV) {maxV = variance;}
+  // cout << "Variance: " << maxV << "\n";
   // Check if sensor is faulty
   if (variance >= VARIANCE_THRESHOLD) { // TODO make sure if 0 status don't just it a chance to be made correct
     *SENSOR_STATUS = 0;
-    //cout << "fail\n";
+    //// cout << "fail\n";
     return 0; // sensor fail
   }
   *SENSOR = mean;
@@ -281,7 +284,7 @@ bool Angle_Update(void)
 {
   if (!ANGLE_OK)
   {
-    //cout << "*************************************************************";
+    //// cout << "*************************************************************";
     return 0;
   }
 
@@ -301,7 +304,7 @@ bool Angle_Update(void)
       HAS_EDGE = 1;
     }
 
-    // cout << "Angle before conversion: " << angle_readings[i] << "\n";
+    // // cout << "Angle before conversion: " << angle_readings[i] << "\n";
   }
   
   // CODE THAT MODIFIES THE ANGLES
@@ -310,7 +313,7 @@ bool Angle_Update(void)
     for (int i = 0; i < SENSOR_COUNT; i++)
     {
       angle_readings[i] = fmod(angle_readings[i] + 90, 360);
-      // cout << "Angle after conversion: " << angle_readings[i] << "\n";
+      // // cout << "Angle after conversion: " << angle_readings[i] << "\n";
     }
   }
   
@@ -341,8 +344,8 @@ bool Angle_Update(void)
   {
     mean += 360;
   }
-  //cout << "Difference: " << max - min << "\n";
-  //cout << "Angle returned: " << mean << "\n";
+  //// cout << "Difference: " << max - min << "\n";
+  //// cout << "Angle returned: " << mean << "\n";
   ANGLE = mean;
   return 1;
 }
@@ -364,25 +367,27 @@ void Update(void) {
   double VYP = VEL_Y;
   double AP = ANGLE;
   // WE ASSUME FIRST BUNCH OF TICKS DO NOT CAUSE ANY SENSOR FAILURES
-  // cout << "Calling Sensor Updates\n";
+  // // cout << "Calling Sensor Updates\n";
 
   if (!Sensor_Update(&POS_X_OK, &Position_X, &POS_X)) {
-    //cout << "Position X sensor faulty\n";
-    //cout << "actual position x:" << POS_X << " estimated position X: " << PXP +  T * VXP << " Difference: " << abs((PXP +  T * VXP)-POS_X)<<"\n";
+    //// cout << "Position X sensor faulty\n";
+    //// cout << "actual position x:" << POS_X << " estimated position X: " << PXP +  T * VXP << " Difference: " << abs((PXP +  T * VXP)-POS_X)<<"\n";
     if (VEL_X_OK) {
-      //cout << "update\n";
+      //// cout << "update\n";
       POS_X = PXP +  T * VXP;
     } else {
       POS_X = simulated_values[0];
     }
   }
+  // cout << "position x: " << POS_X << "\n";
+  // cout << POS_X-PXP << "\n";
   
   OLD_POS_X_DATA.push_front(POS_X);
-  if (OLD_POS_X_DATA.size() == 3 + 1){ OLD_POS_X_DATA.pop_back(); }
+  if (OLD_POS_X_DATA.size() == 10 + 1){ OLD_POS_X_DATA.pop_back(); }
 
 
   if (!Sensor_Update(&POS_Y_OK, &Position_Y, &POS_Y)) {
-    //cout << "Position Y sensor faulty\n";
+    //// cout << "Position Y sensor faulty\n";
     if (VEL_Y_OK) {
       POS_Y -=  T * VYP;
     } else {
@@ -390,20 +395,22 @@ void Update(void) {
     }
   }
   if (!Sensor_Update(&VEL_X_OK, &Velocity_X, &VEL_X)) {
-    // cout << "Velocity X sensor faulty\n";
-    // cout << POS_X << "\n";
-    // cout << POS_X << " ; " << PXP << "\n";
-    // cout << "actual Velocity_X: " << VEL_X << " estimated Vel X: " << (POS_X - OLD_POS_X_DATA.back())<< " Difference: " << (VEL_X)/(POS_X - OLD_POS_X_DATA.back()) << "\n";
+    // // cout << "Velocity X sensor faulty\n";
+    // // cout << POS_X << "\n";
+    // // cout << POS_X << " ; " << PXP << "\n";
+    // // cout << "actual Velocity_X: " << VEL_X << " estimated Vel X: " << (POS_X - OLD_POS_X_DATA.back())<< " Difference: " << (VEL_X)/(POS_X - OLD_POS_X_DATA.back()) << "\n";
     // cout << "actual Velocity_X: " << VEL_X << " estimated Vel X: " << (POS_X - PXP)/T<< "\n";
     if (POS_X_OK) {
-      // cout << "sanity check\n";
-      VEL_X =  (POS_X - PXP)/T;
+      // // cout << "sanity check\n";
+      VEL_X =  (POS_X - OLD_POS_X_DATA.back())/T/OLD_POS_X_DATA.size(); //(POS_X - PXP)/T;
+      // cout << "POS X DIFF: " << POS_X - PXP << "\n";
     } else {
-      VEL_X = simulated_values[2];
+      // cout << "******************************************************************************************************\n";
+      //VEL_X = simulated_values[2];
     }
   }
   if (!Sensor_Update(&VEL_Y_OK, &Velocity_Y, &VEL_Y)) {
-    //cout << "Velocity Y sensor faulty\n";
+    //// cout << "Velocity Y sensor faulty\n";
     if (POS_Y_OK) {
       VEL_Y =  -(POS_Y - PYP)/T;
     } else {
@@ -411,9 +418,10 @@ void Update(void) {
     }
   }
   if (!Angle_Update()) {
+    // cout << "fail\n";
     ANGLE = simulated_values[4];
   }
-
+  // cout << "FLAGS: " << POS_X_OK << POS_Y_OK << VEL_X_OK << VEL_Y_OK << "\n";
 }
 
 // Flight Control
@@ -551,16 +559,19 @@ void Turn_Burn(int THRUSTER, int DIR)
     if (THRUSTER == 1)
     {
       Main_Thruster(POWER);
+      MT_COMMAND = POWER;
     }
     else if (THRUSTER == 2)
     {
-      Left_Thruster(POWER); 
+      Left_Thruster(POWER);
+      LT_COMMAND = POWER;
     }
     else
     {
       Right_Thruster(POWER);
+      RT_COMMAND = POWER;
     }
-    cout << "Thrust\n";
+    // cout << "Thrust\n";
   }
   else
   {
@@ -568,6 +579,9 @@ void Turn_Burn(int THRUSTER, int DIR)
     Main_Thruster(0);
     Left_Thruster(0);
     Right_Thruster(0);
+    MT_COMMAND = 0;
+    LT_COMMAND = 0;
+    RT_COMMAND = 0;
 
     // Rotate to target angle (don't use thrust this tick)
     double ROT_DEG_SIGNED = TARGET_ANGLE - CURRENT_ANGLE;
@@ -580,8 +594,8 @@ void Turn_Burn(int THRUSTER, int DIR)
       ROT_DEG_SIGNED += 360;
     }
     
-    cout << "ROT_DEG_SIGNED: " << ROT_DEG_SIGNED << "\n";
-    cout << "TARGET_ANGLE: " << TARGET_ANGLE << "\n";
+    // cout << "ROT_DEG_SIGNED: " << ROT_DEG_SIGNED << "\n";
+    // cout << "TARGET_ANGLE: " << TARGET_ANGLE << "\n";
     Rotate(ROT_DEG_SIGNED);
     ROTATE_COMMAND = ROT_DEG_SIGNED;
   }
@@ -589,14 +603,17 @@ void Turn_Burn(int THRUSTER, int DIR)
 
 void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
 {
-  cout << "Desired_Vel_X: " << Desired_Vel_X << " Desired_Vel_Y: " << Desired_Vel_Y << "\n";
-  cout << "VEL_X: " << VEL_X << " VEL__Y: " << VEL_Y << "\n";
+  // cout << "Desired_Vel_X: " << Desired_Vel_X << " Desired_Vel_Y: " << Desired_Vel_Y << "\n";
+  // cout << "VEL_X: " << VEL_X << " VEL__Y: " << VEL_Y << "\n";
   if (Upright)
   {
     // Stop thrusters
     Main_Thruster(0);
     Left_Thruster(0);
     Right_Thruster(0);
+    MT_COMMAND = 0;
+    LT_COMMAND = 0;
+    RT_COMMAND = 0;
 
     double ROT_DEG_SIGNED = 0 - ANGLE;
     if (ROT_DEG_SIGNED > 180)
@@ -607,7 +624,7 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
     {
       ROT_DEG_SIGNED += 360;
     }
-    cout << "Uprighting \n";
+    // cout << "Uprighting \n";
     Rotate(ROT_DEG_SIGNED);
     ROTATE_COMMAND = ROT_DEG_SIGNED;
     return;
@@ -622,15 +639,21 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
     if (VEL_X - Desired_Vel_X > 0.0){
       Left_Thruster(0.0);
       Right_Thruster(0.5);
+      LT_COMMAND = 0;
+      RT_COMMAND = 0.5;
     } else {
       Left_Thruster(0.5);
       Right_Thruster(0.0);
+      LT_COMMAND = 0.5;
+      RT_COMMAND = 0;
     }
     
     if (VEL_Y - Desired_Vel_Y < 0.0){
       Main_Thruster(1.0); // Side thrusters should be off
+      MT_COMMAND = 1;
     } else {
       Main_Thruster(0.0);
+      MT_COMMAND = 0;
     }
 
   }
@@ -661,11 +684,11 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
     }
   } 
 
-  //cout << "FLIGHT MODE: " << FLIGHT_MODE << "\n";
+  //// cout << "FLIGHT MODE: " << FLIGHT_MODE << "\n";
 
   if (FLIGHT_MODE != 0)
   {
-    cout << "THRUSTER: " << THRUSTER << " DIR: " << DIR << "\n";
+    // cout << "THRUSTER: " << THRUSTER << " DIR: " << DIR << "\n";
     Turn_Burn(THRUSTER, DIR);
   }
   
@@ -681,7 +704,7 @@ void Lander_Control(void) {
  double VXlim;
  double VYlim;
 
- //cout << POS_Y << "\n";
+ //// cout << POS_Y << "\n";
 
  // Set velocity limits depending on distance to platform.
  // If the module is far from the platform allow it to
@@ -700,7 +723,8 @@ void Lander_Control(void) {
  if (PLAT_Y-POS_Y>200) VYlim=-20; // 5
  else if (PLAT_Y-POS_Y>150) VYlim=-10; // 3  // These are negative because they
  else if (PLAT_Y-POS_Y>50) VYlim=-5; // 2
- else VYlim=-5; // 0.1				       // limit descent velocity
+ else if (PLAT_Y-POS_Y>30) VYlim=-1;
+ else VYlim=-1; // 0.1				       // limit descent velocity
 
  // IMPORTANT NOTE: The code below assumes all components working
  // properly. IT MAY OR MAY NOT BE USEFUL TO YOU when components
@@ -729,8 +753,10 @@ void Lander_Control(void) {
  if (stage == 2) {
   cout << "STAGE: " << stage << "\n";
   
-  if (POS_Y > 55) {
+  if (POS_Y > 65) {
     Flight_Control(0.0, 10.0, false);
+  } else if (VEL_X > 2 || VEL_X < -2) {
+    Flight_Control(0.0, 0.0, false);
   } else {
     stage++;
   }
@@ -738,7 +764,7 @@ void Lander_Control(void) {
 
  if (stage == 3) {
     cout << "STAGE: " << stage << "\n";
-    if (VEL_Y > 0.1) {
+    if (VEL_Y > -1) {
         Flight_Control(0.0, -5, false);
     } else {
         stage++;
@@ -758,29 +784,29 @@ void Lander_Control(void) {
     if (abs(POS_X - PLAT_X) > critical_distance) {
         if ((POS_X - PLAT_X) > 20)
         {
-          cout << "0";
+          // cout << "0";
           Flight_Control(-20.0, 0.0, false);
         }
         else if ((POS_X - PLAT_X) < -20)
         {
-          cout << "1";
+          // cout << "1";
           Flight_Control(20.0, 0.0, false);
         }
         else
         {
-          cout << "2" << "VYLim: " << VYlim << "\n";
+          // cout << "2" << "VYLim: " << VYlim << "\n";
           Flight_Control(0.0, VYlim, false);
         }
         
     } else {
-        cout << "3";
+        // cout << "3";
         Flight_Control(0.0, VYlim, false);
     }
-    if (abs(POS_X - PLAT_X) < 20 && VEL_X < 3 && VEL_X > -3) { // Over platform
-        cout << "LAST PART OF STAGE 4: " << "\n";
+    if (abs(POS_X - PLAT_X) < 20 && VEL_X < 10 && VEL_X > -10) { // Over platform
+        // cout << "LAST PART OF STAGE 4: " << "\n";
         Flight_Control(0.0, VYlim, false);
     }
-    cout << abs(POS_Y - PLAT_Y) << "\n";
+    // cout << abs(POS_Y - PLAT_Y) << "\n";
     if (abs(POS_Y - PLAT_Y) <= 40)
     {
       stage++;
