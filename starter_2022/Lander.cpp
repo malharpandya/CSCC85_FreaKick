@@ -676,6 +676,7 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
   {
     double Vel_Y_Diff = Desired_Vel_Y - VEL_Y;
     double Vel_X_Diff = Desired_Vel_X - VEL_X;
+    
     if (Vel_X_Diff >= 1)
     {
       // Desired direction is right
