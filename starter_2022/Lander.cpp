@@ -624,6 +624,7 @@ void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
   {
     double Vel_Y_Diff = Desired_Vel_Y - VEL_Y;
     double Vel_X_Diff = Desired_Vel_X - VEL_X;
+    
     if (Vel_X_Diff >= 1)
     {
       // Desired direction is right
@@ -688,7 +689,7 @@ void Lander_Control(void) {
  else VYlim=-0.1;				       // limit descent velocity
 
  // Ensure we will be OVER the platform when we land
- if (fabs(PLAT_X-POS_X)/fabs(VEL_X)>1.25*fabs(PLAT_Y-POS_Y)/fabs(VEL_Y)) VYlim=0;
+ //if (fabs(PLAT_X-POS_X)/fabs(VEL_X)>1.25*fabs(PLAT_Y-POS_Y)/fabs(VEL_Y)) VYlim=0;
 
  // IMPORTANT NOTE: The code below assumes all components working
  // properly. IT MAY OR MAY NOT BE USEFUL TO YOU when components
