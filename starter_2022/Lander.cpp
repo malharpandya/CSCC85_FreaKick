@@ -201,6 +201,7 @@ double MT_COMMAND; // [0 ,1]
 double LT_COMMAND; // [0 ,1]
 double RT_COMMAND; // [0 ,1]
 double ROTATE_COMMAND; // 0 if not rotating, or howewer much is left to rotate (in degrees) in which case all thrusters are 0
+int stage = 1;
 
 // CONSISTENCY AND NOISE REFINEMENT
 int SENSOR_COUNT = 100000;
@@ -269,7 +270,7 @@ bool Sensor_Update(bool *SENSOR_STATUS, double (*Sensor_Call)(void), double *SEN
   // Check if sensor is faulty
   if (variance >= VARIANCE_THRESHOLD) { // TODO make sure if 0 status don't just it a chance to be made correct
     *SENSOR_STATUS = 0;
-    cout << "fail\n";
+    //cout << "fail\n";
     return 0; // sensor fail
   }
   *SENSOR = mean;
@@ -334,7 +335,6 @@ bool Angle_Update(void)
     ANGLE_OK = 0;
     return 0;
   }
-  
 
   mean -= HAS_EDGE * 90;
   if (mean < 0)
@@ -343,6 +343,7 @@ bool Angle_Update(void)
   }
   //cout << "Difference: " << max - min << "\n";
   //cout << "Angle returned: " << mean << "\n";
+  ANGLE = mean;
   return 1;
 }
 
@@ -366,10 +367,10 @@ void Update(void) {
   // cout << "Calling Sensor Updates\n";
 
   if (!Sensor_Update(&POS_X_OK, &Position_X, &POS_X)) {
-    cout << "Position X sensor faulty\n";
-    cout << "actual position x:" << POS_X << " estimated position X: " << PXP +  T * VXP << " Difference: " << abs((PXP +  T * VXP)-POS_X)<<"\n";
+    //cout << "Position X sensor faulty\n";
+    //cout << "actual position x:" << POS_X << " estimated position X: " << PXP +  T * VXP << " Difference: " << abs((PXP +  T * VXP)-POS_X)<<"\n";
     if (VEL_X_OK) {
-      cout << "update\n";
+      //cout << "update\n";
       POS_X = PXP +  T * VXP;
     } else {
       POS_X = simulated_values[0];
@@ -381,7 +382,7 @@ void Update(void) {
 
 
   if (!Sensor_Update(&POS_Y_OK, &Position_Y, &POS_Y)) {
-    cout << "Position Y sensor faulty\n";
+    //cout << "Position Y sensor faulty\n";
     if (VEL_Y_OK) {
       POS_Y -=  T * VYP;
     } else {
@@ -402,7 +403,7 @@ void Update(void) {
     }
   }
   if (!Sensor_Update(&VEL_Y_OK, &Velocity_Y, &VEL_Y)) {
-    cout << "Velocity Y sensor faulty\n";
+    //cout << "Velocity Y sensor faulty\n";
     if (POS_Y_OK) {
       VEL_Y =  -(POS_Y - PYP)/T;
     } else {
@@ -468,17 +469,17 @@ int Flight_Mode(void)
   // Choose new main thruster
   if (MT_OK)
   {
-    return 4;
+    return 1;
   }
 
   if (LT_OK)
   {
-    return 5;
+    return 2;
   }
 
   if (RT_OK)
   {
-    return 6;
+    return 3;
   }
 
   return -1;
@@ -493,6 +494,12 @@ void Turn_Burn(int THRUSTER, int DIR)
   double ANGLE_OFFSET = 0;
   double POWER = 0.5;
   bool SIDETHRUSTER = 1;
+
+  if (stage < 4)
+  {
+    POWER = 1;
+  }
+  
   if (THRUSTER == 2)
   {
     ANGLE_OFFSET = 90;
@@ -536,19 +543,118 @@ void Turn_Burn(int THRUSTER, int DIR)
       TARGET_ANGLE = 59.55;
     }
   }
-}
+
+  // If the current angle is reasonably close to the target angle and the direction we want to go is not DOWN
+  if (CURRENT_ANGLE <= TARGET_ANGLE + 0.5 && CURRENT_ANGLE >= TARGET_ANGLE - 0.5 && DIR != 1)
+  {
+    // Thrust since angle is good (don't rotate this tick)
+    if (THRUSTER == 1)
+    {
+      Main_Thruster(POWER);
+    }
+    else if (THRUSTER == 2)
+    {
+      Left_Thruster(POWER); 
+    }
+    else
+    {
+      Right_Thruster(POWER);
+    }
+    cout << "Thrust\n";
+  }
+  else
+  {
+    // Stop thrusters
+    Main_Thruster(0);
+    Left_Thruster(0);
+    Right_Thruster(0);
+
+    // Rotate to target angle (don't use thrust this tick)    
+    double ROT_DEG_SIGNED = TARGET_ANGLE - CURRENT_ANGLE;
+    if (ROT_DEG_SIGNED > 180)
+    {
+      ROT_DEG_SIGNED -= 360;
+    }
+    else if (ROT_DEG_SIGNED < -180)
+    {
+      ROT_DEG_SIGNED += 360;
+    }
+    
+    cout << "ROT_DEG_SIGNED: " << ROT_DEG_SIGNED << "\n";
+    cout << "TARGET_ANGLE: " << TARGET_ANGLE << "\n";
+    Rotate(ROT_DEG_SIGNED);
+    ROTATE_COMMAND = ROT_DEG_SIGNED;
+  }
+} 
 
 void Flight_Control(double Desired_Vel_X, double Desired_Vel_Y, bool Upright)
 {
+  cout << "Desired_Vel_X: " << Desired_Vel_X << " Desired_Vel_Y: " << Desired_Vel_Y << "\n";
+  cout << "VEL_X: " << VEL_X << " VEL__Y: " << VEL_Y << "\n";
+  if (Upright)
+  {
+    // Stop thrusters
+    Main_Thruster(0);
+    Left_Thruster(0);
+    Right_Thruster(0);
+
+    double ROT_DEG_SIGNED = 0 - ANGLE;
+    if (ROT_DEG_SIGNED > 180)
+    {
+      ROT_DEG_SIGNED -= 360;
+    }
+    else if (ROT_DEG_SIGNED < -180)
+    {
+      ROT_DEG_SIGNED += 360;
+    }
+    cout << "Uprighting \n";
+    Rotate(ROT_DEG_SIGNED);
+    ROTATE_COMMAND = ROT_DEG_SIGNED;
+    return;
+  }
+  
   int FLIGHT_MODE = Flight_Mode();
+  int DIR;
+  int THRUSTER = FLIGHT_MODE; // NOTE: for now, THRUSTER = FLIGHT_MODE because flight mode numbering corresponds to THRUSTER numbering in Turn_Burn()
   if (FLIGHT_MODE == 0)
   {
     return;
   }
+  else if (FLIGHT_MODE == 3)
+  {
+    double Vel_Y_Diff = Desired_Vel_Y - VEL_Y;
+    double Vel_X_Diff = Desired_Vel_X - VEL_X;
+    if (Vel_X_Diff >= 1)
+    {
+      // Desired direction is right
+      DIR = 3;
+    }
+    else if (Vel_X_Diff <= -0.5)
+    {
+      // Desired direction is left
+      DIR = 2;
+    }
+    else if (Vel_Y_Diff >= 0.5)
+    {
+      // Desired direction is up
+      DIR = 4;
+    }
+    else if (Vel_Y_Diff < 0)
+    {
+      // Desired direction is down
+      DIR = 1;
+    }
+  }
+
+  //cout << "FLIGHT MODE: " << FLIGHT_MODE << "\n";
+  
+  if (FLIGHT_MODE != 0)
+  {
+    cout << "THRUSTER: " << THRUSTER << " DIR: " << DIR << "\n";
+    Turn_Burn(THRUSTER, DIR);
+  }
   
 }
-
-int stage = 1;
 
 void Lander_Control(void) {
   // call the sensor status and update sensors
@@ -560,7 +666,7 @@ void Lander_Control(void) {
  double VXlim;
  double VYlim;
 
- cout << POS_Y << "\n";
+ //cout << POS_Y << "\n";
 
  // Set velocity limits depending on distance to platform.
  // If the module is far from the platform allow it to
@@ -576,9 +682,10 @@ void Lander_Control(void) {
  else if (fabs(POS_X-PLAT_X)>100) VXlim=15;
  else VXlim=5;
 
- if (PLAT_Y-POS_Y>200) VYlim=-20;
- else if (PLAT_Y-POS_Y>100) VYlim=-10;  // These are negative because they
- else VYlim=-4;				       // limit descent velocity
+ if (PLAT_Y-POS_Y>200) VYlim=-5;
+ else if (PLAT_Y-POS_Y>150) VYlim=-3;  // These are negative because they
+ else if (PLAT_Y-POS_Y>50) VYlim=-2;
+ else VYlim=-0.1;				       // limit descent velocity
 
  // Ensure we will be OVER the platform when we land
  if (fabs(PLAT_X-POS_X)/fabs(VEL_X)>1.25*fabs(PLAT_Y-POS_Y)/fabs(VEL_Y)) VYlim=0;
@@ -598,6 +705,7 @@ void Lander_Control(void) {
  double distToDesiredDestination;
 
  if (stage == 1) {
+  cout << "STAGE: " << stage << "\n";
   if (Angle()>1&&Angle()<359)
   {
     // Call Flight_Control to upright lander
@@ -611,11 +719,12 @@ void Lander_Control(void) {
  }
 
  if (stage == 2) {
+  cout << "STAGE: " << stage << "\n";
   // Ceilling of 55 will clear everything
   // accend
   //   POS_Y
   
-  if (POS_Y > 45) {
+  if (POS_Y > 55) {
     Flight_Control(0.0, 10.0, false);
   } else {
     stage++;
@@ -623,8 +732,9 @@ void Lander_Control(void) {
  }
 
  if (stage == 3) {
+    cout << "STAGE: " << stage << "\n";
     if (VEL_Y > 0.1) {
-        Flight_Control(0.0, 0.0, false);
+        Flight_Control(0.0, -5, false);
     } else {
         stage++;
     }
@@ -633,6 +743,7 @@ void Lander_Control(void) {
 //platform landing buffer of 5
 
  if (stage == 4) {
+    cout << "STAGE: " << stage << "\n";
     double acceleration = 8.77;
     double thruster_turning_angle = 45.2 * PI / 180; // 30.45 for main thruster
     double alpha = ANGLE_OK ? 1 : 2;
@@ -640,20 +751,40 @@ void Lander_Control(void) {
     double critical_distance = pow(VEL_X,2.0) / (2 * acceleration) + turning_buffer;
 
     if (abs(POS_X - PLAT_X) > critical_distance) {
-        Flight_Control(((POS_X - PLAT_X) < 0 ) ? 20 : -20, 0.0, false);
+        if ((POS_X - PLAT_X) > 20)
+        {
+          Flight_Control(-20.0, 0.0, false);
+        }
+        else if ((POS_X - PLAT_X) < -20)
+        {
+          Flight_Control(20.0, 0.0, false);
+        }
+        else
+        {
+          Flight_Control(0.0, 0.0, false);
+        }
+        
+        //Flight_Control(((POS_X - PLAT_X) < 0) ? 20 : -20, 0.0, false);
     } else {
         Flight_Control(0.0,0.0, false);
     }
-    if (abs(POS_X - PLAT_X) < 0.1 && VEL_X < 3) { // Over platform
-        stage ++;
+    if (abs(POS_X - PLAT_X) < 20 && VEL_X < 3 && VEL_X > -3) { // Over platform
+        cout << "LAST PART OF STAGE 4: " << "\n";
+        Flight_Control(0.0, VYlim, false);
+    }
+    cout << abs(POS_Y - PLAT_Y) << "\n";
+    if (abs(POS_Y - PLAT_Y) <= 40)
+    {
+      stage++;
     }
  }
 
  if (stage == 5) {
-    Flight_Control(0.0, VYlim, false);
+    cout << "STAGE: " << stage << "\n";
+    Flight_Control(0.0,-2, true);
  }
 
-
+/*
  // Module is oriented properly, check for horizontal position
  // and set thrusters appropriately.
  if (POS_X>PLAT_X)
@@ -685,7 +816,7 @@ void Lander_Control(void) {
  // vertical velocity and allow for continuous descent. We trust
  // Safety_Override() to save us from crashing with the ground.
  if (VEL_Y<VYlim) Main_Thruster(1.0);
- else Main_Thruster(0);
+ else Main_Thruster(0);*/
 }
 
 void Safety_Override(void) {
@@ -742,6 +873,7 @@ void Safety_Override(void) {
  // with the smallest registered distance
 
  // Horizontal direction.
+ /*
  dmin=1000000;
  if (VEL_X>0)
  {
@@ -805,5 +937,5 @@ void Safety_Override(void) {
   {
    Main_Thruster(1.0);
   }
- }
+ }*/
 }
