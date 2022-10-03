@@ -44,35 +44,57 @@
 % Starter code: F. Estrada, Sep. 2021
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [MPS,HRS,Rg]=Sim1(map_idx, xyz, hr, di, vel)
+function [MPS,HRSt,Rg]=Sim1(map_idx, xyz, hr, di, vel)
 
-pkg load image;     % COMMENT THIS OUT IF USING MATLAB - this is only needed in Octave
+%pkg load image;     % COMMENT THIS OUT IF USING MATLAB - this is only needed in Octave
 
 % Persistent variables are equivalent to C static variables. They are local, but keep their value
 % between function calls. Rather useful for simulations :)
-persistent XYZ=[256 256 .5];
-persistent x_old=XYZ(1);
-persistent y_old=XYZ(2);
-persistent d=[1 0]';
-persistent HR=72;
-persistent spd=10;
-persistent frame=0;
+persistent XYZ;
+XYZ=[256 256 .5];
+persistent x_old;
+x_old=XYZ(1);
+persistent y_old;
+y_old=XYZ(2);
+persistent d;
+d=[1 0]';
+persistent HR;
+HR=72;
+persistent spd;
+spd=10;
+persistent frame;
+frame=0;
 persistent map;
-persistent HRS=zeros(1200,1);
-persistent HRnoise=.15;
-persistent Rgnoise=pi/22;
-persistent beatidx=1;
-persistent beat1=[];
-persistent hist_spd=[];
-persistent hist_HR=[];
-persistent hist_dr=[];
-persistent hist_XYZ=[];
-persistent hist_vel=[];
-persistent hist_hr=[];
-persistent hist_di=[];
-persistent hist_xyz=[];
-persistent hist_dh=[];
-persistent gbl=[0.06136 	0.24477 	0.38774 	0.24477 	0.06136];
+persistent HRS;
+HRS=zeros(1200,1);
+persistent HRnoise;
+HRnoise=.15;
+persistent Rgnoise;
+Rgnoise=pi/22;
+persistent beatidx;
+beatidx=1;
+persistent beat1;
+beat1=[];
+persistent hist_spd;
+hist_spd=[];
+persistent hist_HR;
+hist_HR=[];
+persistent hist_dr;
+hist_dr=[];
+persistent hist_XYZ;
+hist_XYZ=[];
+persistent hist_vel;
+hist_vel=[];
+persistent hist_hr;
+hist_hr=[];
+persistent hist_di;
+hist_di=[];
+persistent hist_xyz;
+hist_xyz=[];
+persistent hist_dh;
+hist_dh=[];
+persistent gbl;
+gbl=[0.06136 	0.24477 	0.38774 	0.24477 	0.06136];
 
 if (exist('xyz'))
     hist_vel(end+1)=vel;
@@ -255,3 +277,4 @@ hist_dr(end+1,:)=d;
 hist_XYZ(end+1,:)=XYZ;
 
 frame=frame+1;
+HRSt=HRS;
