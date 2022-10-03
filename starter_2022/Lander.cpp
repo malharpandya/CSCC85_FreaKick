@@ -741,7 +741,7 @@ void Lander_Control(void) {
  double distToDesiredDestination;
 
  if (stage == 1) {
-  cout << "STAGE: " << stage << "\n";
+  //cout << "STAGE: " << stage << "\n";
   if (Angle()>1&&Angle()<359)
   {
     Flight_Control(0.0, 0.0, true);
@@ -751,7 +751,7 @@ void Lander_Control(void) {
  }
 
  if (stage == 2) {
-  cout << "STAGE: " << stage << "\n";
+  //cout << "STAGE: " << stage << "\n";
   
   if (POS_Y > 65) {
     Flight_Control(0.0, 10.0, false);
@@ -763,7 +763,7 @@ void Lander_Control(void) {
  }
 
  if (stage == 3) {
-    cout << "STAGE: " << stage << "\n";
+    //cout << "STAGE: " << stage << "\n";
     if (VEL_Y > -1) {
         Flight_Control(0.0, -5, false);
     } else {
@@ -774,7 +774,7 @@ void Lander_Control(void) {
 //platform landing buffer of 5
 
  if (stage == 4) {
-    cout << "STAGE: " << stage << "\n";
+    //cout << "STAGE: " << stage << "\n";
     double acceleration = 8.77;
     double thruster_turning_angle = 45.2 * PI / 180; // 30.45 for main thruster
     double alpha = ANGLE_OK ? 1 : 2;
@@ -814,7 +814,7 @@ void Lander_Control(void) {
  }
 
  if (stage == 5) {
-    cout << "STAGE: " << stage << "\n";
+    //cout << "STAGE: " << stage << "\n";
     Flight_Control(0.0,-5, true);
  }
 }

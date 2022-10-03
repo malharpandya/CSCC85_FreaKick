@@ -51,7 +51,11 @@ function [MPS,HRSt,Rg]=Sim1(map_idx, xyz, hr, di, vel)
 % Persistent variables are equivalent to C static variables. They are local, but keep their value
 % between function calls. Rather useful for simulations :)
 persistent XYZ;
-XYZ=[256 256 .5];
+fprintf(2, "old: %f\n", XYZ);
+if (isempty(XYZ))
+    XYZ=[256 256 .5];
+end
+fprintf(2, "new: %f\n", XYZ);
 persistent x_old;
 x_old=XYZ(1);
 persistent y_old;
@@ -74,25 +78,45 @@ Rgnoise=pi/22;
 persistent beatidx;
 beatidx=1;
 persistent beat1;
-beat1=[];
+if (isempty(beat1))
+    beat1=[];
+end
 persistent hist_spd;
-hist_spd=[];
+if (isempty(hist_spd))
+    hist_spd=[];
+end
 persistent hist_HR;
-hist_HR=[];
+if (isempty(hist_HR))
+    hist_HR=[];
+end
 persistent hist_dr;
-hist_dr=[];
+if (isempty(hist_dr))
+    hist_dr=[];
+end
 persistent hist_XYZ;
-hist_XYZ=[];
+if (isempty(hist_XYZ))
+    hist_XYZ=[];
+end
 persistent hist_vel;
-hist_vel=[];
+if (isempty(hist_vel))
+    hist_vel=[];
+end
 persistent hist_hr;
-hist_hr=[];
+if (isempty(hist_hr))
+    hist_hr=[];
+end
 persistent hist_di;
-hist_di=[];
+if (isempty(hist_di))
+    hist_di=[];
+end
 persistent hist_xyz;
-hist_xyz=[];
+if (isempty(hist_xyz))
+    hist_xyz=[];
+end
 persistent hist_dh;
-hist_dh=[];
+if (isempty(hist_dh))
+    hist_dh=[];
+end
 persistent gbl;
 gbl=[0.06136 	0.24477 	0.38774 	0.24477 	0.06136];
 
@@ -102,7 +126,7 @@ if (exist('xyz'))
     hist_di(end+1,:)=di/norm(di);
     hist_xyz(end+1,:)=xyz;
     
-    if (size(hist_vel,2)~=size(hist_spd,2)|size(hist_hr,2)~=size(hist_HR,2)|size(hist_di,2)~=size(hist_dr,2)|size(hist_xyz,2)~=size(hist_XYZ,2))
+    if (size(hist_vel,2)~=size(hist_spd,2)||size(hist_hr,2)~=size(hist_HR,2)||size(hist_di,2)~=size(hist_dr,2)||size(hist_xyz,2)~=size(hist_XYZ,2))
         fprintf(2,'Requested plot but historic data and estimated data have different length - can not plot.\n');
         return;
     end;
@@ -191,7 +215,7 @@ delta=spd*1000/3600;    % Distance increase in pixels, per second travelled
 x_new=XYZ(end,1)+(d(1)*delta);
 y_new=XYZ(end,2)+(d(2)*delta);
 
-if (x_new<1|y_new<1|x_new>size(map,2)|y_new>size(map,1))
+if (x_new<1||y_new<1||x_new>size(map,2)||y_new>size(map,1))
     fprintf(2,'The jogger left the map!!\n');
     MPS=[-1 -1 -1];
     Acc=zeros(60,1);
