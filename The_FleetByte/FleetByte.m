@@ -118,11 +118,25 @@
 
 function []=FleetByte(secs, map, debug)
 
-%pkg load image;             %%% UNCOMMENT THIS FOR OCTAVE - Octave is doofus and requires this line... arghh!
+pkg load image;             %%% UNCOMMENT THIS FOR OCTAVE - Octave is doofus and requires this line... arghh!
+pkg load statistics;
+pkg load optim;
+pkg load signal;
 
 close all;
 %%%%%%%%%% YOU CAN ADD ANY VARIABLES YOU MAY NEED BETWEEN THIS LINE... %%%%%%%%%%%%%%%%%
-
+ pos_size=5; %5
+ MPSpos_size=50;
+ pos=ones(3,pos_size)*-1;
+ MPSpos=ones(3,MPSpos_size)*-1;
+ dir=ones(1,pos_size)*-1;
+ prev_xyz=[256 256 .5]; 
+ weight_Rg = 0.7; % [0 1], 0: Estimate from delta xy, 1: Estimate from prev_di and Rg
+ prev_di = [1 0];
+ prev_vel=10;
+ vel_conv = 1000/3600;
+ prev_hr_estimates = []; 
+ 
 %%%%%%%%%% ... AND THIS LINE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 idx=1;
@@ -182,10 +196,164 @@ while(idx<=secs)               %% Main simulation loop
  %    
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
- xyz=[128 128 .5];       % Replace with your computation of position, the map is 512x512 pixels in size
+ xyz=[256 256 .5]; %prev_xyz;       % Replace with your computation of position, the map is 512x512 pixels in size
  hr=82;                  % Replace with your computation of heart rate
  di=[0 1];               % Replace with your computation for running direction, this should be a 2D unit vector
  vel=5;                  % Replace with your computation of running velocity, in Km/h
+ 
+ %%%%%%%%%%%%%% Calculating Heartrate %%%%%%%%%%%%%%%%
+ % Smooth the HRS signal (shift up so no negative values)
+ L = 1200;
+ t = (0 : L - 1);
+ smooth_HRS = 3 * (sgolayfilt(HRS, 4, 101) + 1);
+ 
+ % find peaks
+ [amplitude, location] = findpeaks(smooth_HRS, 'MinPeakDistance', 15);
+ amplitude = amplitude(2:end - 1);
+ location = location(2:end - 1);
+ num_peaks = length(amplitude);
+ peak_deltas = [];
+ location_temp = location;
+ amplitude_threshold = sum(amplitude) / length(amplitude);
+ % calculate spacing between peaks (exlude small amplitude peaks)
+ for i = 1:num_peaks
+   if (amplitude(i) < (amplitude_threshold - 0.5)) %too noisy
+     location_temp(i) = -1; % disregard this peak
+   endif
+   % add spacing if both current and previous peaks are valid
+   if (i > 1 && location_temp(i-1) != -1 && location_temp(i) != -1)
+     peak_deltas(end + 1) = location_temp(i) - location_temp(i-1);
+   endif
+ endfor
+
+ % reset num_peaks
+ num_delta = length(peak_deltas);
+ 
+ % Generate weight_array
+ weight_increment = 1;
+ weight_array = [1:weight_increment:((weight_increment) * (num_delta - 1)) + 1];
+ wad = dot(weight_array, peak_deltas) / sum(weight_array);
+ 
+ % identify where we are on the curve
+ hr = 7200 / wad;
+ prev_hr_estimates(end+1) = hr;
+ if (length(prev_hr_estimates) > 5)
+   if (hr <= 130)
+     if (prev_hr_estimates(end) - prev_hr_estimates(end-4) > 7)
+       hr = hr + 15;
+     endif
+   endif
+ endif
+ 
+ % -------------------------------------------------------------------
+ 
+ posInd=idx;
+ MPSposInd=idx;
+ dirInd=idx;
+
+ if (idx>pos_size)
+   posInd=pos_size+1;
+ endif
+ 
+ if (idx>MPSpos_size)
+   MPSposInd=MPSpos_size+1;
+ endif
+ 
+ if (posInd==pos_size+1)
+   pos(1,:)=circshift(pos(1,:),-1);
+   pos(2,:)=circshift(pos(2,:),-1);
+   pos(3,:)=circshift(pos(3,:),-1);
+   dir(1,:)=circshift(dir(1,:),-1);
+   posInd=pos_size;
+ endif
+ 
+ if (MPSposInd==MPSpos_size+1)
+   MPSpos(1,:)=circshift(MPSpos(1,:),-1);
+   MPSpos(2,:)=circshift(MPSpos(2,:),-1);
+   MPSposInd = MPSpos_size;
+ endif
+ 
+ pos(1,posInd)=MPS(1,1);
+ pos(2,posInd)=MPS(1,2);
+ pos(3,posInd)=MPS(1,3);
+ MPSpos(1,MPSposInd)=MPS(1,1);
+ MPSpos(2,MPSposInd)=MPS(1,2);
+ 
+  deg = 1;
+  px = polyfit((1:1:posInd), pos(1,1:posInd), deg);
+  py = polyfit((1:1:posInd), pos(2,1:posInd), deg);
+  polyx = polyval(px,posInd);
+  polyy = polyval(py,posInd);
+
+  xyz(1)=polyx;
+  xyz(2)=polyy;
+  xyz(3)=0.5;
+  
+  d = sqrt((xyz(2)-MPS(2))^2 + (xyz(1)-MPS(1))^2);
+  if (d>1.5)
+    best_x = (d-1.5)/d * MPS(1) + 1.5/d*xyz(1);
+    best_y = (d-1.5)/d * MPS(2) + 1.5/d*xyz(2);
+    xyz(1)=best_x;
+    xyz(2)=best_y;
+  endif
+ 
+ MPSpos(1,MPSposInd)=xyz(1);
+ MPSpos(2,MPSposInd)=xyz(2);
+ 
+ totalVel=0;
+ samples=15.0;
+ if ~(idx>samples&idx>16);
+   vel = 10;
+ else
+   for (i=0:samples)
+    distance = ((MPSpos(1,MPSposInd) - MPSpos(1,MPSposInd-i-1))^2 + (MPSpos(2,MPSposInd) - MPSpos(2,MPSposInd-i-1))^2)^0.5;
+    distance = distance/(i+1);
+    totalVel=totalVel+distance/vel_conv;
+   endfor
+   
+   vel=totalVel/samples;
+   vel= 0.2*(totalVel/samples) + 0.8*prev_vel;
+ endif
+ 
+## ---------------------------------
+ delta_xyz = xyz - prev_xyz;
+ di = [delta_xyz(1) delta_xyz(2)];
+ total = di(1) + di(2);
+ pos_est_di = di./total;
+ % 2. estimate from Rg
+ R = [cos(Rg) -sin(Rg); sin(Rg) cos(Rg)];
+ Rg_est_di = (R*prev_di.').';
+ % 3. Take weighted average
+ di = weight_Rg*Rg_est_di + (1-weight_Rg)*pos_est_di;
+
+ 
+ totalDir=0;
+ samples=15.0;
+ if ~(idx>samples&idx>16);
+
+ else
+   for (i=0:samples)
+      delta_x = MPSpos(1,MPSposInd-i)-MPSpos(1,MPSposInd-i-1);
+      delta_y = MPSpos(2,MPSposInd-i)-MPSpos(2,MPSposInd-i-1);
+      delta_z = MPSpos(3,MPSposInd-i)-MPSpos(3,MPSposInd-i-1);
+      
+      di = [delta_x delta_y];
+      total = di(1) + di(2);
+
+   endfor
+   
+   vel=totalVel/samples;
+   vel= 0.2*(totalVel/samples) + 0.8*prev_vel;
+   %vel=prev_vel+0.3*(totalVel/(samples+4) - prev_vel);
+   %vel = prev_vel - xyz(3) - prev_xyz(3);
+ endif
+ 
+ 
+ 
+ prev_xyz = xyz;
+ prev_di=di;
+ prev_vel=vel;
+ xyz(3)=0.5;
  
  if (debug==1)
      figure(5);clf;plot(HRS);
