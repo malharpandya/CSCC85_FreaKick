@@ -88,6 +88,7 @@
 
 #include "EV3_Localization.h"
 
+
 int map[400][4];            // This holds the representation of the map, up to 20x20
                             // intersections, raster ordered, 4 building colours per
                             // intersection.
@@ -96,7 +97,7 @@ double beliefs[400][4];     // Beliefs for each location and motion direction
 
 int maxSensorIter=30;           // Max number of iterations we allow because of faulty colour sensor so we never end up in an infinite loop
 int dataLength=10;              // Length of the past data that is stored 
-int pastColour[dataLength][3];  // Stores the past colours from the colour sensor RGB
+int pastColour[10][3];  // Stores the past colours from the colour sensor RGB
 int T_STEP=2;                   // Represents how many seconds are in a tick
 int previousSensorReading[3] = {-1, -1, -1};
 int calibratedColourValues[6][3]; // We have 6 different Colours
@@ -107,9 +108,17 @@ int calibratedColourValues[6][3]; // We have 6 different Colours
                                   //   REDCOLOR     = 5,
                                   //   WHITECOLOR   = 6
 
+static void catchFunction(int signo) {
+  printf("Caught Ctrl + C\n");
+  sleep(0.1);
+  BT_all_stop(1);
+  BT_close();
+  exit(1);
+}
+
 
 int main(int argc, char *argv[])
-{
+{ 
  char mapname[1024];
  int dest_x, dest_y, rx, ry;
  unsigned char *map_image;
@@ -129,6 +138,15 @@ int main(int argc, char *argv[])
  dest_x=atoi(argv[2]);
  dest_y=atoi(argv[3]);
 
+ // Open a socket to the EV3 for remote controlling the bot.
+ if (BT_open(HEXKEY)!=0)
+ {
+  fprintf(stderr,"Unable to open comm socket to the EV3, make sure the EV3 kit is powered on, and that the\n");
+  fprintf(stderr," hex key for the EV3 matches the one in EV3_Localization.h\n");
+  free(map_image);
+  exit(1);
+ }
+
  if (dest_x==-1&&dest_y==-1)
  {
   calibrate_sensor();
@@ -139,8 +157,24 @@ int main(int argc, char *argv[])
   * OPTIONAL TO DO: If you added code for sensor calibration, add just below this comment block any code needed to
   *   read your calibration data for use in your localization code. Skip this if you are not using calibration
   * ****************************************************************************************************************/
- 
- 
+ // Safely assume calibration file exists, read and set calibration values
+ FILE *fp = fopen("calibration.txt", "r");
+ if (fp == NULL) {
+  perror("cannot open calibration file for reading");
+  exit(1);
+ }
+ char line[256];
+ int i = 0;
+ while (fgets(line, sizeof(line), fp)) {
+  int j=0;
+  char *token = strtok(line, ",");
+  while (token != NULL) {
+    calibratedColourValues[i][j] = atoi(token);
+    token = strtok(NULL, ",");
+    j++;
+  }
+ }
+ fclose(fp);
  // Your code for reading any calibration information should not go below this line //
  
  map_image=readPPMimage(&mapname[0],&rx,&ry);
@@ -174,14 +208,16 @@ int main(int argc, char *argv[])
    beliefs[i+(j*sx)][3]=1.0/(double)(sx*sy*4);
   }
 
- // Open a socket to the EV3 for remote controlling the bot.
- if (BT_open(HEXKEY)!=0)
- {
-  fprintf(stderr,"Unable to open comm socket to the EV3, make sure the EV3 kit is powered on, and that the\n");
-  fprintf(stderr," hex key for the EV3 matches the one in EV3_Localization.h\n");
-  free(map_image);
-  exit(1);
- }
+ signal(SIGINT, &catchFunction);
+
+//  // Open a socket to the EV3 for remote controlling the bot.
+//  if (BT_open(HEXKEY)!=0)
+//  {
+//   fprintf(stderr,"Unable to open comm socket to the EV3, make sure the EV3 kit is powered on, and that the\n");
+//   fprintf(stderr," hex key for the EV3 matches the one in EV3_Localization.h\n");
+//   free(map_image);
+//   exit(1);
+//  }
 
  fprintf(stderr,"All set, ready to go!\n");
  
@@ -225,6 +261,9 @@ int main(int argc, char *argv[])
  //        robot to complete its task should be here.
 BT_all_stop(0);
 int dir = 5;
+
+playSound(2);
+
 while(true){
   BT_drive(MOTOR_A, MOTOR_D,-60);
   BT_drive(MOTOR_C, MOTOR_C, dir);
@@ -249,7 +288,7 @@ while(true){
  exit(0);
 }
 
-int averageSensorReading(sensorReadings)
+int *averageSensorReading(int *sensorReadings, int numSamples)
 {
   /*
     Possible colours are
@@ -258,15 +297,24 @@ int averageSensorReading(sensorReadings)
     green: 0  ,255,0
     blue:  
   */
-
-  int avgColours[3] = {0,0,0};
-  for (int i=0; i<dataLength; i++){
-    avgColours = avgColours + sensorReadings[i];
+  int *avgColours = (int *) calloc(3,sizeof(int));
+  if (!avgColours){
+    fprintf(stderr, "Malloc error\n");
+    return NULL;
   }
-  return avgColours/dataLength; 
+  for (int i=0; i<numSamples; i++){
+    for (int rgbIndex=0; rgbIndex < 3; rgbIndex++)
+    {
+      *(avgColours+rgbIndex) += *(sensorReadings+3*i+rgbIndex);
+    }
+  }
+  for (int i=0; i<3; i++){
+    *(avgColours+i) = *(avgColours+i) / numSamples;
+  }
+  return avgColours; 
 }
 
-int getColourFromReading(sensorReading)
+int getColourFromReading(int sensorReading[3])
 {
   // BECAREFUL SINCE ARRAY INDEXING STARTS AT 0
 //  typedef   enum
@@ -280,7 +328,7 @@ int getColourFromReading(sensorReading)
 // }
 
   int minSquaredError = INT_MAX;
-  int minSquarederrorIndex = -1;
+  int minSquaredErrorIndex = -1;
   for (int i=0; i<6; i++){
     int squaredError = 0;
     for (int rgbIndex = 0; rgbIndex < 3; rgbIndex++){
@@ -291,10 +339,11 @@ int getColourFromReading(sensorReading)
       minSquaredErrorIndex = i;
     }
   }
-  return i;
+  // shift it by one since indexing starts at 0, but blackcolour starts at 1
+  return minSquaredErrorIndex+1;
 }
 
-int isReadingValid(sensorReading)
+int isReadingValid(int sensorReading[3])
 {
   /*
     Sometimes the results from API returned doesn't make sense in which case we want to discard the result
@@ -303,28 +352,53 @@ int isReadingValid(sensorReading)
   for (int i=0; i<3; i++)
   {
     int reading = sensorReading[i];
-    if (reading < 0 || reading > 1020) {return 0}
+    if (reading < 0 || reading > 1020) {return 0;}
     if (reading != previousSensorReading[i]) {difReading=1;}
+  }
+  for (int i=0; i<3; i++)
+  {
+    // Update previous sensor reading
+    previousSensorReading[i] = sensorReading[i];
   }
   return difReading;
 }
 
-int scanColour(isCalibrating)
+int *getColourReading(int numSamples)
 {
   int validReadings=0;
   int totalReadings=0;
-  while(validReadings < dataLength && totalReadings > maxSensorIter)
+  int *sampledColours = (int *) calloc(numSamples * 3, sizeof(int));
+  if (!sampledColours)
   {
-    BT_read_colour_sensor_RGB(0, pastColour[validReadings]);
-    if (isReadingValid(pastColour[validReadings])) { validReadings++; };
-    totalReadings++;
-    sleep(T_STEP);
+    fprintf(stderr,"Malloc failed\n");
+    return NULL;
   }
-  if (maxSensorIter<i) { fprintf(stderr,"Error: reached max sensor iteration!\n"); }
-  int sensorReadings[3] = averageSensorReading(pastColour);
-  // START HERE NEXT TIME: print to screen the calibrated colour sensors
-  fprintf(stderr,"R: %d, G: %d, B: %d\n", sensorReadings[0], sensorReadings[1], sensorReadings[2]);
-  return getColourFromReading(sensorReadings);
+  // maxSnesorIter is constant but not numSamples, maybe do maxSensorIter + numSamples
+  // printf("start sampling\n");
+  while(validReadings < numSamples && totalReadings < maxSensorIter)
+  {
+    BT_read_colour_sensor_RGB(PORT_1, sampledColours+3*validReadings);
+    // printf("sampling %d r: %d g: %d b: %d\n", validReadings, *(sampledColours+3*validReadings),*(sampledColours+3*validReadings+1),*(sampledColours+3*validReadings+2));
+    if (isReadingValid(sampledColours+3*validReadings)) { validReadings++; };
+    totalReadings++;
+    // TODO shouldn't have T_STEP here at all
+    // sleep(T_STEP);
+  }
+  if (maxSensorIter<totalReadings) { fprintf(stderr,"Error: reached max sensor iteration!\n"); }
+  int *sensorReading = averageSensorReading(sampledColours, numSamples);
+  free(sampledColours);
+  return sensorReading;
+}
+
+int scanColour()
+{
+  /*
+   * This function is used to get the colour from the colour sensor.
+   */
+  int *colourReading = getColourReading(10);
+  int colourValue = getColourFromReading(colourReading);
+  free(colourReading);
+  return colourValue;
 }
 
 int find_street(void)   
@@ -340,7 +414,7 @@ int find_street(void)
   // TODO Questions: will the center of rotation be placed on the line of will the sensor be placed in the center
   // NEED to do: figure out how to rotate on the spot
   int curColour = -1;
-  scan_colour()
+  scanColour();
   while (curColour != BLACKCOLOR){
     
     sleep(T_STEP);
@@ -527,23 +601,31 @@ void calibrate_sensor(void)
   /************************************************************************************************************************
    *   OIPTIONAL TO DO  -   Complete this function
    ***********************************************************************************************************************/
-  fprintf(stderr,"Calibration function called!\n");  
-
-BLACKCOLOR   = 1,
-                                  //   BLUECOLOR    = 2,
-                                  //   GREENCOLOR   = 3,
-                                  //   YELLOWCOLOR  = 4,
-                                  //   REDCOLOR     = 5,
-                                  //   WHITECOLOR   = 6
-
-  char colours[6] = {"Black", "Blue", "Green", "Yellow", "Red", "White"}
-  for (int i=0; i<6; i++){
-    printf("Place sensor over %s", colours[i]);
-    scanf("%d");
-    // Start calibrating
-
+  fprintf(stderr,"Calibration function called!\n");
+  // reset file
+  fclose(fopen("calibration.txt", "w"));
+  // open in append mode
+  FILE *fp = fopen("calibration.txt", "a");
+  if (fp == NULL){
+       perror("cannot open calibration file for writing");
+       exit(1);
   }
-
+  const char *colours[6] = {"Black", "Blue", "Green", "Yellow", "Red", "White"};
+  for (int i=0; i<6; i++){
+    printf("Place sensor over %s, then press ENTER", colours[i]);
+    getchar();
+    int *rgb = getColourReading(30);
+    if (!rgb) {
+      perror("error in allocating memory for color readings");
+      exit(1);
+    }
+    fprintf(fp, "%d,%d,%d\n", *(rgb), *(rgb+1), *(rgb+2));
+    printf("1:%d\n",*rgb);
+    printf("2:%d\n",*(rgb+1));
+    // printf("3:%d\n",*(rgb+2));
+    free(rgb);
+  }
+  fclose(fp);
 }
 
 int parse_map(unsigned char *map_img, int rx, int ry)
@@ -833,4 +915,13 @@ unsigned char *readPPMimage(const char *filename, int *rx, int *ry)
  fclose(f);
 
  return(im);    
+}
+
+void playSound(int colour) {
+  if (colour == 2) {
+    // Remove this upload code after 1st run
+    BT_upload_file("BrkProg_SAVE", "Boing.rsf");
+
+    BT_play_sound_file("Boing", 100);
+  }
 }
