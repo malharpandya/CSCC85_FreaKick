@@ -83,5 +83,6 @@ void calibrate_sensor(void);
 unsigned char *readPPMimage(const char *filename, int *rx, int*ry);
 int* scanTriplet();
 int scanColour();
+int uploadSoundFiles(void);
 
 #endif

@@ -37,7 +37,7 @@
  * ********************************************************************************************************************/
 #include "btcomm.h"
 
-//#define __BT_debug			// Uncomment to trigger printing of BT
+// #define __BT_debug			// Uncomment to trigger printing of BT
 // messages for debug purposes
 
 int message_id_counter =
