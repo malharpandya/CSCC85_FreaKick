@@ -87,7 +87,7 @@
 */
 
 #include "EV3_Localization.h"
-
+#include <signal.h>
 
 int map[400][4];            // This holds the representation of the map, up to 20x20
                             // intersections, raster ordered, 4 building colours per
@@ -108,9 +108,25 @@ int calibratedColourValues[6][3]; // We have 6 different Colours
                                   //   REDCOLOR     = 5,
                                   //   WHITECOLOR   = 6
 
+// Colour array
+const char *colours[6] = {"Black", "Blue", "Green", "Yellow", "Red", "White"};
+// Driving motors
+int left_motor_drive = -33;//-33;
+int right_motor_drive = -35;//-40;
+int right_motor_right_turn = 15;
+int left_motor_right_turn = -15;
+int right_motor_left_turn = -15;
+int left_motor_left_turn = 15;
+
+// Sensor motor
+int LR_power = 100;
+int mid_power = 30;
+double LR_time_increment = 1.5;
+double mid_time_increment = 3;
+
 static void catchFunction(int signo) {
   printf("Caught Ctrl + C\n");
-  sleep(0.1);
+  sleep(1);
   BT_all_stop(1);
   BT_close();
   exit(1);
@@ -173,6 +189,7 @@ int main(int argc, char *argv[])
     token = strtok(NULL, ",");
     j++;
   }
+  i++;
  }
  fclose(fp);
  // Your code for reading any calibration information should not go below this line //
@@ -219,6 +236,14 @@ int main(int argc, char *argv[])
 //   exit(1);
 //  }
 
+//  if (uploadSoundFiles()!=0) {
+//   fprintf(stderr, "Unable to upload sound files to EV2\n");
+//   sleep(5);
+//   BT_close();
+//   free(map_image);
+//   exit(1);
+//  }
+
  fprintf(stderr,"All set, ready to go!\n");
  
 /*******************************************************************************************************************************
@@ -261,15 +286,38 @@ int main(int argc, char *argv[])
  //        robot to complete its task should be here.
 BT_all_stop(0);
 int dir = 5;
+// Test code
+// while(1) {
+//   BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
+//   sleep(0.25);
+//   BT_all_stop(1);
+// }
 
-playSound(2);
+int test;
+scanTriplet();
+drive_along_street();
+BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
+sleep(1);
+BT_all_stop(1);
+drive_along_street();
+scan_intersection(&test, &test, &test, &test);
+turn_at_intersection(1);
+drive_along_street();
+scan_intersection(&test, &test, &test, &test);
+drive_along_street();
+BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
+sleep(1);
+BT_all_stop(1);
+drive_along_street();
 
-while(true){
-  BT_drive(MOTOR_A, MOTOR_D,-60);
-  BT_drive(MOTOR_C, MOTOR_C, dir);
-  dir = dir*-1;
-  sleep(3);
-}
+BT_all_stop(1);
+// while(1){
+//   printf("detected colour: %d\n", scanColour());
+//   // BT_drive(MOTOR_A, MOTOR_D,-60);
+//   // BT_drive(MOTOR_C, MOTOR_C, dir);
+//   // dir = dir*-1;
+//   // sleep(3);
+// }
 
 
 //  int rgb[3] = {-1,-1,-1};
@@ -281,11 +329,22 @@ while(true){
 //   }
 //   printf("\n");
 //  }
-
+ 
  // Cleanup and exit - DO NOT WRITE ANY CODE BELOW THIS LINE
  BT_close();
  free(map_image);
  exit(0);
+}
+
+int uploadSoundFiles(void){
+  int success = BT_upload_file("/home/root/lms2012/prjs/BrkProg_SAVE/Boing.rsf", "../Boing.rsf");
+  char *content = (char *)calloc(1000,sizeof(char));
+  char *dir = (char *)"/home/root/lms2012/prjs";
+  BT_list_files(dir ,&content);
+  printf("content %s\n", content);
+  printf("what is this %d\n", success);
+  BT_play_sound_file("/home/root/lms2012/prjs/a/Blue",100);
+  return success;
 }
 
 int *averageSensorReading(int *sensorReadings, int numSamples)
@@ -395,8 +454,13 @@ int scanColour()
   /*
    * This function is used to get the colour from the colour sensor.
    */
-  int *colourReading = getColourReading(10);
+  int *colourReading = getColourReading(5);
+  printf("R: %d G: %d B: %d\n", *colourReading, *(colourReading+1), *(colourReading+2));
   int colourValue = getColourFromReading(colourReading);
+  printf("THE SENSOR IS DETECTING: %s\n", colours[colourValue-1]);
+  char soundPath[100] = "/home/root/lms2012/prjs/a/";
+  strcat(soundPath, colours[colourValue-1]);
+  // BT_play_sound_file(soundPath,100);
   free(colourReading);
   return colourValue;
 }
@@ -423,6 +487,56 @@ int find_street(void)
   return(0);
 }
 
+
+int turnTowardsStreet(void){
+  BT_all_stop(1);
+  int curColour = 0;
+  curColour = scanColour();
+  if(curColour == 1 || curColour == 4) {return 1;}
+
+  for (int ticks = 1; ticks < 30; ticks+=2) {
+    // ticks = 1;
+    // Turn right to find the road;
+    BT_timed_motor_port_start(MOTOR_A, -15, 50, 50*ticks, 200);
+    BT_timed_motor_port_start(MOTOR_D, 15, 50, 50*ticks, 200);
+    
+    sleep(1.5);
+    curColour = scanColour();
+    if(curColour == 1 || curColour == 4) {return 1;}
+
+
+    // Turn left to find the road;
+    BT_timed_motor_port_start(MOTOR_A, 15, 50, 50*(ticks+1), 200);
+    BT_timed_motor_port_start(MOTOR_D, -15, 50, 50*(ticks+1), 200);
+    
+    sleep(1.5);
+    curColour = scanColour();
+    if(curColour == 1 || curColour == 4) {return 1;}
+
+
+    // // Undo the right turn
+    // BT_timed_motor_port_start(MOTOR_A, 20, 50, 80*ticks, 200);
+    // BT_timed_motor_port_start(MOTOR_D, -20, 50, 80*ticks, 200);
+    // sleep(1);
+
+    // // Turn left to find the road
+    // BT_timed_motor_port_start(MOTOR_A, 15, 50, 50*ticks, 200);
+    // BT_timed_motor_port_start(MOTOR_D, -15, 50, 50*ticks, 200);
+    // sleep(1);
+    // curColour = scanColour();
+    // if(curColour == 1 || curColour == 4) {return 1;}
+
+    // // Undo the left turn
+    // BT_timed_motor_port_start(MOTOR_A, -20, 50, 80*ticks, 200);
+    // BT_timed_motor_port_start(MOTOR_D, 20, 50, 80*ticks, 200);
+    // sleep(1);
+    // BT_all_stop(1);
+  }
+  return 0;
+}
+
+
+
 int drive_along_street(void)
 {
  /*
@@ -436,7 +550,54 @@ int drive_along_street(void)
   * You can use the return value to indicate success or failure, or to inform the rest of your code of the state of your
   * bot after calling this function.
   */   
-  return(0);
+  
+
+  // Keep going straight until we get a reading that is not black
+  bool onBlack = 1;
+  
+  
+  while (onBlack) {
+    int curColour = scanColour();
+
+    if (curColour == 4) {
+      // assume we are straight with the road
+      return 1;
+    }
+
+    if (curColour == 1 || curColour == 4){
+      fprintf(stderr, "On Black\n");
+      BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
+    } else {
+      fprintf(stderr, "Away from Black\n");
+      turnTowardsStreet();
+      // BT_turn(MOTOR_A, left_motor_right_turn, MOTOR_D, right_motor_right_turn);
+      // BT_timed_motor_port_start(char port_id, char power, int ramp_up_time, int run_time, int ramp_down_time);
+      // BT_timed_motor_port_start(MOTOR_A, -15, 50, 50, 100);
+      // sleep(1);
+      // BT_all_stop(1);
+      // onBlack = 0;
+    }
+  }
+
+
+
+
+  // // not aligned on the street
+  // while (1) {
+  //   int *colour_triplet = scanTriplet();
+  //   if (colour_triplet[1] == 4) {
+  //     fprintf(stderr, "Intersection detected");
+  //     return 1;
+  //   } else if (colour_triplet[1] != 1) {
+  //     return -1; // deviate
+  //   } else  {
+  //     BT_turn(MOTOR_A, left_motor_drive,  MOTOR_D, right_motor_drive);
+  //     sleep(1);
+  //     BT_all_stop(1);
+  //   }
+  //   free(colour_triplet);
+  // }
+  // return 0;
 }
 
 int scan_intersection(int *tl, int *tr, int *br, int *bl)
@@ -474,7 +635,88 @@ int scan_intersection(int *tl, int *tr, int *br, int *bl)
  *(tr)=-1;
  *(br)=-1;
  *(bl)=-1;
- return(0);
+
+ // Move sensor to far right position
+ BT_all_stop(1);
+ BT_timed_motor_port_start_v2(MOTOR_C, LR_power, mid_time_increment * 1000);
+
+ // Check if the robot is lined up at the intersection
+ if (scanColour() != 1) {
+  printf("Robot is either not aligned with street at intersection or too far away from centre of intersection\n");
+  return 0;
+ }
+
+ // Drive forwards until the sensor detects a colour other than black
+
+//  BT_timed_motor_port_start(MOTOR_A, left_motor_drive, 200,100,200);
+//  BT_timed_motor_port_start(MOTOR_D, right_motor_drive, 200,100,200);
+//  sleep(3);
+
+ BT_turn(MOTOR_A, left_motor_drive+15,  MOTOR_D, right_motor_drive+15);
+
+ while (true) {
+  if (scanColour() != 1) {
+    // BT_all_stop(1);
+    // Slowly drive forwards a little to ensure the sensor is in the middle of the building
+    BT_timed_motor_port_start(MOTOR_A, 0, 200, 0, 0);
+    BT_timed_motor_port_start(MOTOR_D, 0, 200, 0, 0);
+
+    // Move sensor to middle position
+    BT_timed_motor_port_start_v2(MOTOR_C, -mid_power, mid_time_increment * 1000);
+    break;
+  }
+ }
+ 
+ // Perform a colour scan and store left and right colours scanned
+ int *colour_triplet = scanTriplet();
+ *tl = *colour_triplet;
+ *tr = *(colour_triplet+2);
+ fprintf(stderr, "####################################\n\n");
+ fprintf(stderr, "Top left: %s, Top right: %s\n", colours[*colour_triplet-1], colours[*(colour_triplet+2)-1]);
+  
+//  printf("top left and right: %d %d\n", *colour_triplet, *(colour_triplet+2));
+
+
+ // Realign robot with the street
+ 
+ // Move sensor to far right position
+ BT_timed_motor_port_start_v2(MOTOR_C, LR_power, mid_time_increment * 1000);
+
+
+//  BT_timed_motor_port_start(MOTOR_A, -left_motor_drive, 200,100,200);
+//  BT_timed_motor_port_start(MOTOR_D, -right_motor_drive, 200,100,200);
+//  sleep(3);
+
+ // Drive backwards until the sensor detects black, then drive backwards until a colour other than black is detected
+ BT_turn(MOTOR_A, -left_motor_drive-15,  MOTOR_D, -right_motor_drive-15);
+ while (true) {
+  if (scanColour() == 1) {
+    while (true) {
+      if (scanColour() != 1) {
+      // Slowly drive backwards a little to ensure the sensor is in the middle of the building
+
+      // BT_all_stop(1);
+      BT_timed_motor_port_start(MOTOR_A, 0, 200, 0, 0);
+      BT_timed_motor_port_start(MOTOR_D, 0, 200, 0, 0);
+
+      // Move sensor to middle position
+      BT_timed_motor_port_start_v2(MOTOR_C, -mid_power, mid_time_increment * 1000);
+      break;
+      }
+    }
+    break;
+  }
+ }
+ // Perform a colour scan and store left and right colours scanned
+  colour_triplet = scanTriplet();
+  *bl = *colour_triplet;
+  *br = *(colour_triplet+2);
+
+  fprintf(stderr, "Bottom left: %s, Bottom right: %s\n\n", colours[*colour_triplet-1], colours[*(colour_triplet+2)-1]);
+  fprintf(stderr, "####################################");
+
+  free(colour_triplet);
+  return(1);
  
 }
 
@@ -491,7 +733,66 @@ int turn_at_intersection(int turn_direction)
   * 
   * You can use the return value to indicate success or failure, or to inform your code of the state of the bot
   */
-  return(0);
+
+  // Assume sensor is aligned with the wheels and is currently over an intersection.
+  // move forward till you detect anything but black
+  // if yellow/red detected, we are the next intersection/end of map, move back a bit and proceed to rotate
+  // if anything else detected, call turn_to_street to account for the deviation, and keep going
+  // rotation is continuous in whatever direction was given until the sensor detects black.
+  // for this rotation should be pretty slow
+
+
+  // Assume intersection is under sensor, assume building have been scanned, based on turn direction, you have a triplet of integers
+  // which is the desired reading for the color sensor. (for now, just look for black in the middle)
+  // Turn small amounts, and scan. Repeat until sensor detects desired triplet.
+  // keep track of total time turned, if above threshold, robot is stuck. return 0. go to find street
+  // return 1 if successful
+  // Assumes A is left wheel, D is right wheel, C is color sensor
+  ////////////////////////////////////////////////////////////////////////////////////////////
+
+  // Keep going forward if you are detecting black
+  BT_turn(MOTOR_A, left_motor_drive+15,  MOTOR_D, right_motor_drive+15);
+  sleep(1);
+  while(true){
+    int colour_detected = scanColour();
+    // slowly move forward on road
+    if(colour_detected == 1){
+      BT_turn(MOTOR_A, left_motor_drive+20,  MOTOR_D, right_motor_drive+20);
+    }
+    // if deviated
+    else if(!(colour_detected == 4 || colour_detected == 5)){
+      BT_all_stop(1);
+      turnTowardsStreet();
+    }
+    // we hit the next intersection or the edge of the map
+    else {
+      BT_all_stop(1);
+      // move back slowly till you detect black
+      while (true) {
+        if (scanColour() == 1) {
+          BT_all_stop(1);
+          break;
+        }
+        BT_turn(MOTOR_A, -left_motor_drive-15,  MOTOR_D, -right_motor_drive-15);
+      }
+      break;
+    }
+  }
+  if (turn_direction){
+    BT_turn(MOTOR_A, left_motor_left_turn-3, MOTOR_D, right_motor_left_turn+3);
+  }
+  else {
+    BT_turn(MOTOR_A, left_motor_right_turn+3, MOTOR_D, right_motor_right_turn-3);
+  }
+  sleep(1);
+  while(true){
+    int colour_detected = scanColour();
+    if (colour_detected == 1){
+      BT_all_stop(1);
+      break;
+    }
+  }
+  printf("Finished Turn\n");
 }
 
 int robot_localization(int *robot_x, int *robot_y, int *direction)
@@ -610,7 +911,7 @@ void calibrate_sensor(void)
        perror("cannot open calibration file for writing");
        exit(1);
   }
-  const char *colours[6] = {"Black", "Blue", "Green", "Yellow", "Red", "White"};
+  // const char *colours[6] = {"Black", "Blue", "Green", "Yellow", "Red", "White"};
   for (int i=0; i<6; i++){
     printf("Place sensor over %s, then press ENTER", colours[i]);
     getchar();
@@ -620,9 +921,6 @@ void calibrate_sensor(void)
       exit(1);
     }
     fprintf(fp, "%d,%d,%d\n", *(rgb), *(rgb+1), *(rgb+2));
-    printf("1:%d\n",*rgb);
-    printf("2:%d\n",*(rgb+1));
-    // printf("3:%d\n",*(rgb+2));
     free(rgb);
   }
   fclose(fp);
@@ -917,11 +1215,24 @@ unsigned char *readPPMimage(const char *filename, int *rx, int *ry)
  return(im);    
 }
 
-void playSound(int colour) {
-  if (colour == 2) {
-    // Remove this upload code after 1st run
-    BT_upload_file("BrkProg_SAVE", "Boing.rsf");
+int* scanTriplet() {
+  int *colour_triplet = (int*)calloc(sizeof(int), 3);
 
-    BT_play_sound_file("Boing", 100);
-  }
+  BT_all_stop(1);
+  // Scan x3
+  // Assume sensor is in middle
+  colour_triplet[1] = scanColour();
+  // Move sensor motor to right (from middle)
+  BT_timed_motor_port_start_v2(MOTOR_C, LR_power, LR_time_increment * 1000);
+  colour_triplet[2] = scanColour();
+  // Move sensor to the left (more power/time to cross the barrier)
+  BT_timed_motor_port_start_v2(MOTOR_C, -LR_power, LR_time_increment * 1000);
+  colour_triplet[0] = scanColour();
+  // Set sensor back to the middle
+  // Get through the barrier
+  BT_timed_motor_port_start_v2(MOTOR_C, LR_power, LR_time_increment * 1000);
+  // Come back to the middle (move left from the right side)
+  BT_timed_motor_port_start_v2(MOTOR_C, -mid_power, mid_time_increment * 1000);
+
+  return colour_triplet;
 }
