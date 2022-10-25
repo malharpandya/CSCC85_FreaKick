@@ -286,54 +286,11 @@ int main(int argc, char *argv[])
  //        robot to complete its task should be here.
 BT_all_stop(0);
 int dir = 5;
-// Test code
-// while(1) {
-//   BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
-//   sleep(0.25);
-//   BT_all_stop(1);
-// }
-
-// turnTowardsStreet();
-// int test;
 scanTriplet();
-// drive_along_street();
-while(true){
-  BT_turn(MOTOR_A, 36, MOTOR_D, -36); //18 18 //10 -14
+while(1){
   turn_at_intersection(1);
 }
-// BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
-// sleep(1);
-// BT_all_stop(1);
-// drive_along_street();
-// scan_intersection(&test, &test, &test, &test);
-// turn_at_intersection(1);
-// drive_along_street();
-// scan_intersection(&test, &test, &test, &test);
-// drive_along_street();
-// BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
-// sleep(1);
-// BT_all_stop(1);
-// drive_along_street();
-
 BT_all_stop(1);
-// while(1){
-//   printf("detected colour: %d\n", scanColour());
-//   // BT_drive(MOTOR_A, MOTOR_D,-60);
-//   // BT_drive(MOTOR_C, MOTOR_C, dir);
-//   // dir = dir*-1;
-//   // sleep(3);
-// }
-
-
-//  int rgb[3] = {-1,-1,-1};
-
-//  while(true){
-//   BT_read_colour_sensor_RGB(0, rgb);
-//   for (int i=0; i<3; i++){
-//     printf("%d ", rgb[i]);
-//   }
-//   printf("\n");
-//  }
  
  // Cleanup and exit - DO NOT WRITE ANY CODE BELOW THIS LINE
  BT_close();
@@ -611,7 +568,7 @@ int drive_along_street(void)
   
 
   // Keep going straight until we get a reading that is not black
-  bool onBlack = 1;
+  int onBlack = 1;
   
   
   while (onBlack) {
@@ -627,8 +584,25 @@ int drive_along_street(void)
       return 0;
     } else if (curColour == 5) {
       BT_all_stop(1);
-      fprintf(stderr, "Map edge detected, stopping\n");
+      fprintf(stderr, "Map edge detected, going back and turning right\n");
+      BT_timed_motor_port_start(MOTOR_A, -left_motor_drive-15, 50, 400, 200);
+      BT_timed_motor_port_start(MOTOR_D, -right_motor_drive-15, 50, 400, 200);
+      sleep(1);
+      // Tur right
+      BT_timed_motor_port_start(MOTOR_A, -22, 50, 1000, 4000);
+      BT_timed_motor_port_start(MOTOR_D, 22, 50, 1000, 4000);
+      sleep(1);
+      while(1){
+        int colour_detected = scanColour(1);
+        if (colour_detected == 1){
+        BT_all_stop(1);
+        if (scanColour(10) == 1){
+          break;
+        };
+        turnTowardsStreet(); //TODO Resume
+        }
       return 1;
+      }
     } else {
       fprintf(stderr, "Away from Black\n");
       turnTowardsStreet();
@@ -716,7 +690,7 @@ int scan_intersection(int *tl, int *tr, int *br, int *bl)
 
  BT_turn(MOTOR_A, left_motor_drive+15,  MOTOR_D, right_motor_drive+15);
 
- while (true) {
+ while (1) {
   if (scanColour(5) != 1) {
     // BT_all_stop(1);
     // Slowly drive forwards a little to ensure the sensor is in the middle of the building
@@ -751,9 +725,9 @@ int scan_intersection(int *tl, int *tr, int *br, int *bl)
 
  // Drive backwards until the sensor detects black, then drive backwards until a colour other than black is detected
  BT_turn(MOTOR_A, -left_motor_drive-15,  MOTOR_D, -right_motor_drive-15);
- while (true) {
+ while (1) {
   if (scanColour(5) == 1) {
-    while (true) {
+    while (1) {
       if (scanColour(5) != 1) {
       // Slowly drive backwards a little to ensure the sensor is in the middle of the building
 
@@ -815,7 +789,7 @@ int turn_at_intersection(int turn_direction)
   // Keep going forward if you are detecting black
   BT_turn(MOTOR_A, left_motor_drive+13,  MOTOR_D, right_motor_drive+15);
   sleep(1);
-  while(true){
+  while(1){
     int colour_detected = scanColour(5);
     // slowly move forward on road
     if(colour_detected == 1){
@@ -845,23 +819,24 @@ int turn_at_intersection(int turn_direction)
   }
   if (turn_direction){
     // BT_turn(MOTOR_A, 22, MOTOR_D, -22);
-    BT_timed_motor_port_start(MOTOR_A, 22, 50, 1000, 6000);
-    BT_timed_motor_port_start(MOTOR_D, -22, 50, 1000, 6000);
+    BT_timed_motor_port_start(MOTOR_A, 22, 50, 500, 2000);
+    BT_timed_motor_port_start(MOTOR_D, -22, 50, 500, 2000);
   }
   else {
-    BT_turn(MOTOR_A, -36, MOTOR_D, 36);
+    BT_timed_motor_port_start(MOTOR_A, -22, 50, 500, 2000);
+    BT_timed_motor_port_start(MOTOR_D, 22, 50, 500, 2000);
       //     BT_timed_motor_port_start(MOTOR_A, -left_motor_drive-15, 50, 400, 200);
       // BT_timed_motor_port_start(MOTOR_D, -right_motor_drive-15, 50, 400, 200);
   }
   sleep(1);
-  while(true){
+  while(1){
     int colour_detected = scanColour(1);
     if (colour_detected == 1){
       BT_all_stop(1);
       if (scanColour(10) == 1){
         break;
       };
-      BT_turn(MOTOR_A, 22, MOTOR_D, -22); //TODO Resume
+      turnTowardsStreet();
     }
   }
   printf("Finished Turn\n");
@@ -1001,9 +976,13 @@ double turnRightModel[4][3][3] =    {
                                       }
                                     };
 
-// Move forward
+// 0 = FOWARD, 1 = RIGHT, 3 = LEFT
+int moveDir = 0;
 
-// If red is detected while moving forward, move back to previous intersection and turn left or right
+// Action Model
+// Drive along street and if it hits red, update the beliefs to account for turning right
+
+// Update beliefs 
 
 
  // Return an invalid location/direction and notify that localization was unsuccessful (you will delete this and replace it
