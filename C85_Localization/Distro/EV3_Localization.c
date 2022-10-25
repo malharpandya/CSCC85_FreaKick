@@ -298,7 +298,7 @@ int dir = 5;
 scanTriplet();
 // drive_along_street();
 while(true){
-  // BT_turn(MOTOR_A, 36, MOTOR_D, -36); //18 18 //10 -14
+  BT_turn(MOTOR_A, 36, MOTOR_D, -36); //18 18 //10 -14
   turn_at_intersection(1);
 }
 // BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
@@ -617,14 +617,18 @@ int drive_along_street(void)
   while (onBlack) {
     int curColour = scanColour(5);
 
-    // if (curColour == 4) {
-    //   // assume we are straight with the road
-    //   return 1;
-    // }
-
-    if (curColour == 1 || curColour == 4){
+    // Return 0 if yellow is detected and 1 if red is detected, otherwise keep driving
+    if (curColour == 1){
       fprintf(stderr, "On Black\n");
       BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
+    } else if (curColour == 4) {
+      BT_all_stop(1);
+      fprintf(stderr, "Intersection detected, stopping\n");
+      return 0;
+    } else if (curColour == 5) {
+      BT_all_stop(1);
+      fprintf(stderr, "Map edge detected, stopping\n");
+      return 1;
     } else {
       fprintf(stderr, "Away from Black\n");
       turnTowardsStreet();
@@ -915,6 +919,92 @@ int robot_localization(int *robot_x, int *robot_y, int *direction)
   /************************************************************************************************************************
    *   TO DO  -   Complete this function
    ***********************************************************************************************************************/
+
+ double driveForwardModel[4][3][3] = {
+                                      // Facing up
+                                      {
+                                       {0, 1, 0},
+                                       {0, 0, 0},
+                                       {0, 0, 0}
+                                      },
+                                      // Facing right
+                                      {
+                                       {0, 0, 0},
+                                       {0, 0, 1},
+                                       {0, 0, 0}
+                                      },
+                                      // Facing bottom
+                                      {
+                                       {0, 0, 0},
+                                       {0, 0, 0},
+                                       {0, 1, 0}
+                                      },
+                                      // Facing left
+                                      {
+                                       {0, 0, 0},
+                                       {1, 0, 0},
+                                       {0, 0, 0}
+                                      }
+                                    };
+
+double turnLeftModel[4][3][3] =     {
+                                      // Facing up
+                                      {
+                                       {0, 0, 0},
+                                       {0.9, 0, 0},
+                                       {0, 0.1, 0}
+                                      },
+                                      // Facing right
+                                      {
+                                       {0, 0.9, 0},
+                                       {0.1, 0, 0},
+                                       {0, 0, 0}
+                                      },
+                                      // Facing bottom
+                                      {
+                                       {0, 0.1, 0},
+                                       {0, 0, 0.9},
+                                       {0, 0, 0}
+                                      },
+                                      // Facing left
+                                      {
+                                       {0, 0, 0},
+                                       {0, 0, 0.1},
+                                       {0, 0.9, 0}
+                                      }
+                                    };
+
+double turnRightModel[4][3][3] =    {
+                                      // Facing up
+                                      {
+                                       {0, 0, 0},
+                                       {0, 0, 0.9},
+                                       {0, 0.1, 0}
+                                      },
+                                      // Facing right
+                                      {
+                                       {0, 0, 0},
+                                       {0.1, 0, 0},
+                                       {0, 0.9, 0}
+                                      },
+                                      // Facing bottom
+                                      {
+                                       {0, 0.1, 0},
+                                       {0.9, 0, 0},
+                                       {0, 0, 0}
+                                      },
+                                      // Facing left
+                                      {
+                                       {0, 0.9, 0},
+                                       {0, 0, 0.1},
+                                       {0, 0, 0}
+                                      }
+                                    };
+
+// Move forward
+
+// If red is detected while moving forward, move back to previous intersection and turn left or right
+
 
  // Return an invalid location/direction and notify that localization was unsuccessful (you will delete this and replace it
  // with your code).
