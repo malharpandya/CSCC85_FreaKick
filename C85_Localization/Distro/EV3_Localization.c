@@ -501,6 +501,19 @@ int find_street(void)
     if (total_time < threshold){
       // It detected black or yellow move forward enough to get the wheels where the sensor was
       getToSensor();
+      // Rotate clockwise till you hit black/yellow
+      while(1){
+        BT_turn(MOTOR_A, -10, MOTOR_D, 10);
+        colour = scanColour(3);
+        if (colour == 1 || colour == 4){
+          break;
+        }
+      }
+      // 2 cases, black/yellow was from street we used in getToSensor, or the street perpendicular to that
+      // move forward till you dont detect black/yellow, if you have moved forward for more than threshold time, you are pretty aligned to original street
+      // if you move forward and lost black/yellow in less than threshold time, you are aligned to perpendicular street
+      // go back same amount and rotate clockwise till you see the black/yellow
+      // now you should be aligned to original street
     } else{
       // It is completely lost, play sad music, "I have failed you father"
       return 0;
