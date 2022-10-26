@@ -86,5 +86,6 @@ int scanColour();
 int uploadSoundFiles(void);
 int turnTowardsStreet();
 int turnTowardsStreetOld();
+void getToSensor();
 
 #endif

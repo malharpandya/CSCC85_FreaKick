@@ -284,14 +284,33 @@ int main(int argc, char *argv[])
 
  // HERE - write code to call robot_localization() and go_to_target() as needed, any additional logic required to get the
  //        robot to complete its task should be here.
-BT_all_stop(0);
-int dir = 5;
-scanTriplet();
-while(1){
-  turn_at_intersection(1);
-}
-BT_all_stop(1);
+ BT_all_stop(0);
+ int dir = 5;
+ scanTriplet();
+ getToSensor();
  
+
+ // Comment this out before submitting
+//  scanTriplet(); // resets sensor to middle
+//  // initialize robot position and direction
+//  int robot_x = 0;
+//  int robot_y = 0;
+//  int direction = 0;
+//  // localize, pass pointer to positiona nd direction so the function can update it
+//  int localized = robot_localization(&robot_x, &robot_y, &direction); // returns 1 if localization complete, 0 if its completely lost
+//  if (!localized){
+//   return -1;
+//  }
+//  int success = go_to_target(robot_x, robot_y, direction, dest_x, dest_y);
+//  while(!success){
+//   int localized = robot_localization(&robot_x, &robot_y, &direction); // returns 1 if localization complete, 0 if its completely lost
+//   if (!localized){
+//     return -1;
+//     success = go_to_target(robot_x, robot_y, direction, dest_x, dest_y);
+//  }
+ // successfully reached destination, play happy music, dance (call scan triplet back to back while spinning)
+
+
  // Cleanup and exit - DO NOT WRITE ANY CODE BELOW THIS LINE
  BT_close();
  free(map_image);
@@ -449,6 +468,13 @@ int* scanTriplet() {
   return colour_triplet;
 }
 
+void getToSensor(void){
+  // move forward a distance equal to the distance between the sensor and the centre of the axis of the wheels
+  BT_timed_motor_port_start(MOTOR_A, -20, 100, 1000, 400);
+  BT_timed_motor_port_start(MOTOR_D, -20, 100, 1000, 400);
+  sleep(1);
+}
+
 int find_street(void)   
 {
  /*
@@ -457,13 +483,31 @@ int find_street(void)
   * 
   * You can use the return value to indicate success or failure, or to inform the rest of your code of the state of your
   * bot after calling this function
-  */   
+  */
 
-  // TODO Questions: will the center of rotation be placed on the line of will the sensor be placed in the center
-  // NEED to do: figure out how to rotate on the spot
-  turnTowardsStreetOld();
+  // check if already on street
+  int colour = scanColour(10);
+  // If not, Rotate clockwise slowly till you see black/yellow or you are confident that you have rotated over 360%
+  int t_step = 0.1;
+  int total_time = 0;
+  int threshold = 10;
+  if (!(colour == 1 || colour == 4)){
+    while(!(colour == 1 || colour == 4) && total_time < threshold){
+      BT_turn(MOTOR_A, -10, MOTOR_D, 10);
+      sleep(t_step);
+      colour = scanColour(3);
+      total_time += t_step;
+    }
+    if (total_time < threshold){
+      // It detected black or yellow move forward enough to get the wheels where the sensor was
+      getToSensor();
+    } else{
+      // It is completely lost, play sad music, "I have failed you father"
+      return 0;
+    }
+  }
 
-  return(0);
+  // If you dont see black/yellow, you are lost, play sad music, "I have failed you father", return 0
 }
 
 
@@ -588,7 +632,7 @@ int drive_along_street(void)
       BT_timed_motor_port_start(MOTOR_A, -left_motor_drive-15, 50, 400, 200);
       BT_timed_motor_port_start(MOTOR_D, -right_motor_drive-15, 50, 400, 200);
       sleep(1);
-      // Tur right
+      // Turn right
       BT_timed_motor_port_start(MOTOR_A, -22, 50, 1000, 4000);
       BT_timed_motor_port_start(MOTOR_D, 22, 50, 1000, 4000);
       sleep(1);
@@ -1015,7 +1059,7 @@ int go_to_target(int robot_x, int robot_y, int direction, int target_x, int targ
   /************************************************************************************************************************
    *   TO DO  -   Complete this function
    ***********************************************************************************************************************/
-  return(0);  
+  
 }
 
 void calibrate_sensor(void)
