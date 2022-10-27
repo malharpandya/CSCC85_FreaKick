@@ -87,7 +87,7 @@
 */
 
 #include "EV3_Localization.h"
-#include "EV3_utils.h"
+// #include "EV3_utils.h"
 
 #include <signal.h>
 
@@ -99,7 +99,7 @@ double beliefs[400][4];     // Beliefs for each location and motion direction
 
 int maxSensorIter=30;           // Max number of iterations we allow because of faulty colour sensor so we never end up in an infinite loop
 int dataLength=10;              // Length of the past data that is stored 
-int pastColour[10][3];  // Stores the past colours from the colour sensor RGB
+int pastColour = 0;  // Stores the past colours from the colour sensor RGB
 int T_STEP=2;                   // Represents how many seconds are in a tick
 int previousSensorReading[3] = {-1, -1, -1};
 int calibratedColourValues[6][3]; // We have 6 different Colours
@@ -286,18 +286,13 @@ int main(int argc, char *argv[])
 
  // HERE - write code to call robot_localization() and go_to_target() as needed, any additional logic required to get the
  //        robot to complete its task should be here.
- test();
+ // test();
  BT_all_stop(0);
  int dir = 5;
- //robot_localization(0, 0, 0);
- while (1)
- {
-  //scanTriplet();
-  turn_at_intersection(1);
-  drive_along_street();
- }
- 
-
+ find_street();
+//  while(1){
+//   scanColour(1);
+//  }
  // Comment this out before submitting
 //  scanTriplet(); // resets sensor to middle
 //  // initialize robot position and direction
@@ -385,6 +380,9 @@ int getColourFromReading(int sensorReading[3])
       minSquaredErrorIndex = i;
     }
   }
+  if (minSquaredError > 2000){
+    return pastColour;
+  }
   // shift it by one since indexing starts at 0, but blackcolour starts at 1
   return minSquaredErrorIndex+1;
 }
@@ -442,13 +440,17 @@ int scanColour(int n)
    * This function is used to get the colour from the colour sensor.
    */
   int *colourReading = getColourReading(n);
-  printf("R: %d G: %d B: %d\n", *colourReading, *(colourReading+1), *(colourReading+2));
+  // printf("R: %d G: %d B: %d\n", *colourReading, *(colourReading+1), *(colourReading+2));
   int colourValue = getColourFromReading(colourReading);
-  printf("THE SENSOR IS DETECTING: %s\n", colours[colourValue-1]);
-  char soundPath[100] = "/home/root/lms2012/prjs/a/";
-  strcat(soundPath, colours[colourValue-1]);
+  // printf("THE SENSOR IS DETECTING: %s\n", colours[colourValue-1]);
+  
+  // char soundPath[100] = "/home/root/lms2012/prjs/a/";
+  // strcat(soundPath, colours[colourValue-1]);
+
   // BT_play_sound_file(soundPath,100);
   free(colourReading);
+  pastColour = colourValue;
+  printf("pastColour %d\n", pastColour);
   return colourValue;
 }
 
@@ -500,94 +502,61 @@ int find_street(void)
   int t_step = 0.1;
   int total_time = 0;
   int threshold = 10;
-  if (!(colour == 1 || colour == 4)){
-    while(!(colour == 1 || colour == 4) && total_time < threshold){
+  while(!(colour == 1 || colour == 4) && total_time < threshold){
+    BT_turn(MOTOR_A, -12, MOTOR_D, 12);
+    sleep(t_step);
+    colour = scanColour(1);
+    total_time += t_step;
+  }
+  BT_all_stop(1);
+  if (total_time < threshold){
+    // It detected black or yellow move forward enough to get the wheels where the sensor was
+    fprintf(stderr, "Detected Black, going to it\n");
+    getToSensor();
+    fprintf(stderr, "reached street, aligning now\n");
+    // Rotate like turn_at_intersection
+    colour = scanColour(1);
+    while(!(colour==1 || colour==4)){
       BT_turn(MOTOR_A, -12, MOTOR_D, 12);
-      sleep(t_step);
-      colour = scanColour(3);
-      total_time += t_step;
+      colour = scanColour(1);
     }
+    fprintf(stderr, "fining tuning complete, checking alignment\n");
+    // 2 cases, black/yellow was from street we used in getToSensor, or the street perpendicular to that
+    // move forward a distance enough that can determine whether you are farily aligned or not
+    BT_turn(MOTOR_A, -15, MOTOR_D, -15);
+    sleep(1);
+    // check if you still detect black/yellow
     BT_all_stop(1);
-    if (total_time < threshold){
-      // It detected black or yellow move forward enough to get the wheels where the sensor was
-      fprintf(stderr, "Detected Black, going to it");
-      getToSensor();
-      // Rotate like turn_at_intersection
-      colour = scanColour(3);
-      while(!(colour==1 || colour==4)){
-        BT_turn(MOTOR_A, -12, MOTOR_D, 12);
-        colour = scanColour(3);
+    colour = scanColour(10);
+    if (colour == 1 || colour == 4){
+      // if you do great, return
+      fprintf(stderr, "alignment good, returning\n");
+      return 1;
+    } else {
+      // if you dont, go back till you do
+      fprintf(stderr, "incorrect street, going back and retrying\n");
+      while (!(colour == 1 || colour == 4)){
+        BT_turn(MOTOR_A, 15, MOTOR_D, 15);
+        colour = scanColour(1);
       }
-      while(colour == 1 || colour == 4){
-        BT_turn(MOTOR_A, -12, MOTOR_D, 12);
-        colour = scanColour(3);
-      }
-      while(!(colour==1 || colour==4)){
-        BT_turn(MOTOR_A, 10, MOTOR_D, -10);
-        colour = scanColour(3);
-      }
-      // 2 cases, black/yellow was from street we used in getToSensor, or the street perpendicular to that
-      // move forward a distance enough that can determine whether you are farily aligned or not
-      BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
-      sleep(0.5);
-      // check if you still detect black/yellow
       BT_all_stop(1);
-      colour = scanColour(10);
-      if (colour == 1 || colour == 4){
-        // if you do great, return
-        return 1;
-      } else {
-        // if you dont, go back till you do
-        while (!(colour == 1 || colour == 4)){
-          BT_turn(MOTOR_A, -left_motor_drive, MOTOR_D, -right_motor_drive);
-          colour = scanColour(3);
-        }
-        // and keep turning clockwise this is the only other street you should align to
+      fprintf(stderr, "backtrack complete\n");
+      // and keep turning clockwise this is the only other street you should align to
+      BT_turn(MOTOR_A, -12, MOTOR_D, 12);
+      sleep(2);
+      colour = scanColour(1);
+      while(!(colour==1 || colour==4)){
         BT_turn(MOTOR_A, -12, MOTOR_D, 12);
-        // RESUME HERE MALHAR OCT 26
-        //so do the juke and return
+        colour = scanColour(1);
       }
-      //so do the juke and return
-
-
-
-
-
-      // int alignThreshold = 2;
-      // int totalAlignTime = 0;
-      // colour = scanColour(3);
-      // BT_turn(MOTOR_A, left_motor_drive, MOTOR_D, right_motor_drive);
-      // while (colour == 1 || colour == 4) {
-      //   sleep(t_step);
-      //   totalAlignTime += t_step;
-      //   colour = scanColour(3);
-      //   if (totalAlignTime >= alignThreshold) {
-      //     return 1;
-      //   }
-        
-      // }
-      
-      // BT_all_stop(1);
-
-        // if you move forward and lost black/yellow in less than threshold time, you are aligned to perpendicular street
-        // go back same amount and rotate clockwise till you see the black/yellow
-        // now you should be aligned to original street
-        // BT_turn(MOTOR_A, -left_motor_drive, MOTOR_D, -right_motor_drive);
-        // sleep(totalAlignTime);
-        // BT_timed_motor_port_start(MOTOR_A, -22, 50, 500, 2000);
-        // BT_timed_motor_port_start(MOTOR_D, 22, 50, 500, 2000);
-        // sleep(0.5);
-        // while(1){
-        //   colour = scanColour(3);
-        //   if (colour == 1 || colour == 4){
-        //     break;
-        //   }
-        // }
-        // return 1;
-    } else{
-      // It is completely lost, play sad music, "I have failed you father"
-      return 0;
+      fprintf(stderr, "second street detected, fine tuning alignment\n");
+      BT_all_stop(1);
+      fprintf(stderr, "fine tuning complete\n");
+      return(1);
     }
+  } else{
+    // It is completely lost, play sad music, "I have failed you father"
+    return 0;
   }
   return 1;
 }

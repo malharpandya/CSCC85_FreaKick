@@ -87,7 +87,7 @@ int turn_at_intersection(int turn_direction);
 void calibrate_sensor(void);
 unsigned char *readPPMimage(const char *filename, int *rx, int*ry);
 int* scanTriplet();
-int scanColour();
+int scanColour(int n);
 int uploadSoundFiles(void);
 int turnTowardsStreet();
 int turnTowardsStreetOld();
