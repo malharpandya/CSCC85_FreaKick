@@ -87,6 +87,8 @@
 */
 
 #include "EV3_Localization.h"
+#include "EV3_utils.h"
+
 #include <signal.h>
 
 int map[400][4];            // This holds the representation of the map, up to 20x20
@@ -284,6 +286,8 @@ int main(int argc, char *argv[])
 
  // HERE - write code to call robot_localization() and go_to_target() as needed, any additional logic required to get the
  //        robot to complete its task should be here.
+
+ test();
 BT_all_stop(0);
 int dir = 5;
 scanTriplet();
