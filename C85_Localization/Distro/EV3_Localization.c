@@ -87,6 +87,7 @@
 */
 
 #include "EV3_Localization.h"
+#include "EV3_utils.h"
 
 int map[400][4];                                                               // This holds the representation of the map, up to 20x20
                                                                                // intersections, raster ordered, 4 building colours per
@@ -264,6 +265,15 @@ int main(int argc, char *argv[])
 
   // HERE - write code to call robot_localization() and go_to_target() as needed, any additional logic required to get the
   //        robot to complete its task should be here.
+
+  // int testBeliefReadings[4] = {6,3,2,2};
+  // int testBeliefReadings2[4] = {6,3,6,2};
+  // int testBeliefReadings3[4] = {2,2,6,3};
+  // updateBelief(0,testBeliefReadings);
+  // updateBelief(1,testBeliefReadings2);
+  // updateBelief(1,testBeliefReadings3);
+
+
   robot_localization(0, 0, 0);
 
   // Cleanup and exit - DO NOT WRITE ANY CODE BELOW THIS LINE

@@ -72,6 +72,12 @@ code that you have to complete in order to implement the localization algorithms
 	#define HEXKEY "00:16:53:55:D9:FC"	// <--- SET UP YOUR EV3's HEX ID here
 #endif
 
+extern int map[400][4];                                                               // This holds the representation of the map, up to 20x20
+                                                                               // intersections, raster ordered, 4 building colours per
+                                                                               // intersection.
+extern int sx, sy;                                                                    // Size of the map (number of intersections along x and y)
+extern double beliefs[400][4];                                                        // Beliefs for each location and motion direction
+
 int parse_map(unsigned char *map_img, int rx, int ry);
 int robot_localization(int *robot_x, int *robot_y, int *direction);
 int go_to_target(int robot_x, int robot_y, int direction, int target_x, int target_y);
