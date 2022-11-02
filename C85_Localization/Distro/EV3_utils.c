@@ -616,6 +616,7 @@ double updateBeliefBasedOnAction(int action) {
         free(newBeliefs[j]);
     }
     free(newBeliefs);
+    return 0;
 }
 
 void updateperceptionModel();

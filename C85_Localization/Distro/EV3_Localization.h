@@ -89,5 +89,6 @@ void calibrate_sensor(void);
 unsigned char *readPPMimage(const char *filename, int *rx, int*ry);
 int scanColour(int n);
 void getColourReading(int n, double* avg_reading);
+int actionModel(int moveDir);
 
 #endif
