@@ -88,6 +88,8 @@
 
 #include "EV3_Localization.h"
 #include "EV3_utils.h"
+#include <stdio.h>
+#include <time.h>
 
 int map[400][4];                                                               // This holds the representation of the map, up to 20x20
                                                                                // intersections, raster ordered, 4 building colours per
@@ -272,14 +274,74 @@ int main(int argc, char *argv[])
   // updateBelief(0,testBeliefReadings);
   // updateBelief(1,testBeliefReadings2);
   // updateBelief(1,testBeliefReadings3);
-    
-  robot_localization(0, 0, 0);
+  // drive_along_street();
+  // exit(1);
+  // int result = find_street();
+  // printf("find street returns: %d\n", result);
+  // exit(2);
+
+  robot_localization();
   
 
   // Cleanup and exit - DO NOT WRITE ANY CODE BELOW THIS LINE
   BT_close();
   free(map_image);
   exit(0);
+}
+
+void align() {
+  BT_timed_motor_port_start_v2(MOTOR_C, -30, 500);
+  sleep(1);
+  BT_turn(MOTOR_A, -14, MOTOR_D, -15);
+  sleep(2);
+  BT_all_stop(1);
+  int t_step = 0.1;
+  int step_count = 0;
+  int step_threshold = 10;
+  time_t startT = time(NULL);
+  while (scanColour(1) != 1)
+  {
+    if (last_turn)
+    {
+      BT_turn(MOTOR_A, 13, MOTOR_D, -13);
+    }
+    else
+    {
+      BT_turn(MOTOR_A, -13, MOTOR_D, 13);
+    }
+    // sleep(t_step);
+    if (time(NULL) - startT > 1){
+      break;
+    }
+  }
+  if (step_count == step_threshold) {
+    //we were turning the wrong way
+    int colour = scanColour(1);
+    while (!(colour == 1 || colour == 4)) {
+      colour = scanColour(1);
+      if (last_turn)
+      {
+        BT_turn(MOTOR_A, -12, MOTOR_D, 12);
+      }
+      else
+      {
+        BT_turn(MOTOR_A, +12, MOTOR_D, -12);
+      }
+    }
+  }
+  // go back to intersection
+  step_threshold = 30;
+  step_count = 0;
+  startT = time(NULL);
+  while (scanColour(3) != 4) //&& step_count < step_threshold)
+  {
+    BT_turn(MOTOR_A, 17, MOTOR_D, 18);
+    if (time(NULL) - startT > 3){
+      find_street();
+      break;
+    }
+  }
+  BT_all_stop(1);
 }
 
 int find_street(void)
@@ -291,26 +353,109 @@ int find_street(void)
    * You can use the return value to indicate success or failure, or to inform the rest of your code of the state of your
    * bot after calling this function
    */
+  // reset beliefs
+  char soundPathLost[100] = "/home/root/lms2012/prjs/a/lost";
+  BT_play_sound_file(soundPathLost,100);
+
+    for (int j = 0; j < sy; j++)
+    {
+      for (int i = 0; i < sx; i++)
+        {
+          beliefs[i + (j * sx)][0] = 1.0 / (double)(sx * sy * 4);
+          beliefs[i + (j * sx)][1] = 1.0 / (double)(sx * sy * 4);
+          beliefs[i + (j * sx)][2] = 1.0 / (double)(sx * sy * 4);
+          beliefs[i + (j * sx)][3] = 1.0 / (double)(sx * sy * 4);
+        }
+    }
+  // turn anticlockwise till you hit black/yellow
+  // if you havent hit anything and the robot has rotated more than 360 degrees, return -1 you are lost
+  // if you hit black, go forward till you aren't on black anymore, turn clockwise till you do
+  // repeat
+  // if you see red, you hit an edge, execute the same code as robot localization
+  // once you see yellow, call the robot misaligned code.
+  int t_step = 0.1;
+  int step_count = 0;
+  int step_threshold = 300;
+  int rotation_dir = 1; // 1: anticlockwise, -1: clockwise
+  while(1) {
+    int colour = scanColour(1);
+    while (!(colour == 1 || colour == 4) && step_count < step_threshold) {
+      colour = scanColour(1);
+      if (colour == 5) {
+        printf("RED DETECTED\n\n\n");
+        break; // red detected, turn around
+      }
+      BT_turn(MOTOR_A, 13*rotation_dir, MOTOR_D, -13*rotation_dir);
+      sleep(t_step);
+      step_count++;
+    }
+    BT_all_stop(1);
+    if (step_count == step_threshold) {
+      char soundPathExit[100] = "/home/root/lms2012/prjs/a/outerspace";
+      BT_play_sound_file(soundPathExit,100);
+
+      return(-1); // we are lost
+    }
+    if (colour == 5) {
+      for(int i = 0; i < 5; i++) {
+        BT_turn(MOTOR_A, 13, MOTOR_D, -13);
+        sleep(1);
+        i++;
+      }
+      find_street();
+    }
+    // verify scancolour
+    colour = scanColour(10);
+    if (colour == 1) {
+      // step 1 finished
+      while(1) {
+        // drive forward till you do not see black
+        while (scanColour(1) == 1) {
+          BT_turn(MOTOR_A, -18, MOTOR_D, -19);
+        }
+        BT_all_stop(1);
+        colour = scanColour(10);
+        if (colour == 4) {
+          break;
+        }
+        if (colour == 5) {
+          // detected edge, turn
+          turn_at_intersection(0);
+        }
+        // turn clockwise till you see black again
+        while(scanColour(1) != 1) {
+          BT_turn(MOTOR_A, -13, MOTOR_D, 13);
+        }
+        BT_all_stop(1);
+      }
+    }
+    if (colour == 4) {
+      break;
+    }
+  }
+  align();
   return (0);
 }
 
 void courseCorrect()
 {
   // Move back a bit
-  printf("going back a bit\n");
-  BT_turn(MOTOR_A, 10, MOTOR_D, 10); // 12 before
-  sleep(1);
-  BT_all_stop(1);
+  // printf("going back a bit\n");
+  // BT_turn(MOTOR_A, 10, MOTOR_D, 10); // 12 before
+  // sleep(1);
+  // BT_all_stop(1);
   // Called during deviations in drive street, once course corrected, return
   // You havent deviated that far off, move the sensor to the, you can
   // reasonably expect the left sensor position to be on the right side of the street
   // regardless of the direction of deviation.
-  BT_timed_motor_port_start_v2(MOTOR_C, -100, 1000);
+  BT_timed_motor_port_start_v2(MOTOR_C, -100, 500);
   // pivot on right wheel, move slowly till sensor detects black/yellow
-  // 3 times in a row
   int Ticks = 0;
   int TickThreshold = 1;
-  while (Ticks < TickThreshold)
+  int t_step = 0.1;
+  int step_count = 0;
+  int step_threshold = 10;
+  while (Ticks < TickThreshold && step_count < step_threshold)
   {
     int colour = scanColour(3);
     if (colour == 1 || colour == 4 || colour == 5)
@@ -323,13 +468,24 @@ void courseCorrect()
     }
     BT_motor_port_stop(MOTOR_D, 1);
     BT_motor_port_start(MOTOR_A, -20);
+    sleep(t_step);
+    step_count++;
     fprintf(stderr, "pivoting right\n");
   }
-  printf("threshold reached, stopping\n");
   BT_all_stop(1);
+  if (step_count == step_threshold) {
+    // you are lost, find street
+    // center the sensor
+    BT_timed_motor_port_start_v2(MOTOR_C, 100, 750);
+    sleep(0.75);
+    BT_timed_motor_port_start_v2(MOTOR_C, -30, 500);
+    sleep(0.5);
+    find_street();
+  }
+  printf("threshold reached, stopping\n");
   // centre the sensor again
-  BT_timed_motor_port_start_v2(MOTOR_C, 100, 1000);
-  BT_timed_motor_port_start_v2(MOTOR_C, -40, 500);
+  BT_timed_motor_port_start_v2(MOTOR_C, 100, 750);
+  BT_timed_motor_port_start_v2(MOTOR_C, -30, 500);
   // pivot on right wheel, move slowly till sensor detects black 3 times in a row
   Ticks = 0;
   while (Ticks < TickThreshold)
@@ -347,8 +503,8 @@ void courseCorrect()
     BT_motor_port_start(MOTOR_A, 20);
     fprintf(stderr, "pivoting left\n");
   }
-  BT_turn(MOTOR_A, -10, MOTOR_D, -10); // 12 before
-  sleep(1);
+  // BT_turn(MOTOR_A, -15, MOTOR_D, -15); // 12 before
+  // sleep(1);
   printf("course correction complete\n");
   BT_all_stop(1);
 }
@@ -370,7 +526,7 @@ int drive_along_street(void)
   {
     // drive forward
     printf("driving on street\n");
-    BT_turn(MOTOR_A, -18, MOTOR_D, -20);
+    BT_turn(MOTOR_A, -18, MOTOR_D, -19);
   }
   // you stopped detecting black, stop moving
   BT_all_stop(1);
@@ -390,6 +546,11 @@ int drive_along_street(void)
   if (colour == 5)
   {
     // map edge detected
+
+    char soundPath[100] = "/home/root/lms2012/prjs/a/";
+    strcat(soundPath, colours[4]);
+    BT_play_sound_file(soundPath,100);
+
     printf("Map Edge detected\n");
     return 0; // edge
   }
@@ -398,13 +559,6 @@ int drive_along_street(void)
   courseCorrect();
   // drive along street again
   return drive_along_street();
-}
-
-void getToSensor()
-{
-  BT_turn(MOTOR_A, -14, MOTOR_D, -16);
-  sleep(2);
-  BT_all_stop(1);
 }
 
 int scan_intersection(int *tl, int *tr, int *br, int *bl)
@@ -447,37 +601,18 @@ int scan_intersection(int *tl, int *tr, int *br, int *bl)
   BT_all_stop(1);
   printf("SCANNING INTERSECTION\n");
   // Move sensor to far right
-  BT_timed_motor_port_start_v2(MOTOR_C, 60, 1000);
+  BT_timed_motor_port_start_v2(MOTOR_C, 60, 750);
+  sleep(0.75);
 
   // Check if the robot is aligned
   if (scanColour(5) != 1)
   {
     printf("Robot is misaligned\n");
+    align();
     // Move sensor to middle
-    BT_timed_motor_port_start_v2(MOTOR_C, -35, 500);
-    sleep(1);
-    getToSensor();
-    while (scanColour(1) != 1)
-    {
-      if (last_turn)
-      {
-        BT_turn(MOTOR_A, 12, MOTOR_D, -12);
-      }
-      else
-      {
-        BT_turn(MOTOR_A, -12, MOTOR_D, 12);
-      }
-    }
-    // go back to intersection
-    while (scanColour(3) != 4)
-    {
-      BT_turn(MOTOR_A, 18, MOTOR_D, 19);
-    }
-    BT_all_stop(1);
+    BT_timed_motor_port_start_v2(MOTOR_C, 60, 750);
+     sleep(0.75);
   }
-  // Move sensor to far right
-  BT_timed_motor_port_start_v2(MOTOR_C, 60, 1000);
-  sleep(1);
 
   // Drive backwards till sensor detects non black
   BT_turn(MOTOR_A, 18, MOTOR_D, 19);
@@ -493,9 +628,17 @@ int scan_intersection(int *tl, int *tr, int *br, int *bl)
     }
   }
   *br = scanColour(10);
+  char soundPath[100] = "/home/root/lms2012/prjs/a/";
+  strcat(soundPath, colours[*br-1]);
+  BT_play_sound_file(soundPath,100);
+
   // Move sensor to left
-  BT_timed_motor_port_start_v2(MOTOR_C, -80, 1000);
+  BT_timed_motor_port_start_v2(MOTOR_C, -80, 500);
   *bl = scanColour(10);
+  strcpy(soundPath, "/home/root/lms2012/prjs/a/");
+  strcat(soundPath, colours[*bl-1]);
+  BT_play_sound_file(soundPath,100);
+
   printf("The sensor detects:\n BOTTOM LEFT: %s, BOTTOM RIGHT: %s\n", colours[*bl - 1], colours[*br - 1]);
   while (1)
   {
@@ -520,9 +663,17 @@ int scan_intersection(int *tl, int *tr, int *br, int *bl)
     }
   }
   *tl = scanColour(10);
-  BT_timed_motor_port_start_v2(MOTOR_C, 100, 1000); // go to right
+  strcpy(soundPath, "/home/root/lms2012/prjs/a/");
+  strcat(soundPath, colours[*tl-1]);
+  BT_play_sound_file(soundPath,100);
+
+  BT_timed_motor_port_start_v2(MOTOR_C, 100, 750); // go to right
   *tr = scanColour(10);
-  BT_timed_motor_port_start_v2(MOTOR_C, -35, 500); // come to middle from right
+  strcpy(soundPath, "/home/root/lms2012/prjs/a/");
+  strcat(soundPath, colours[*tr-1]);
+  BT_play_sound_file(soundPath,100);
+
+  BT_timed_motor_port_start_v2(MOTOR_C, -30, 500); // come to middle from right
   printf("The sensor detects:\n TOP LEFT: %s, TOP RIGHT: %s\n", colours[*tl - 1], colours[*tr - 1]);
 
   return (1); // success
@@ -543,7 +694,8 @@ int turn_at_intersection(int turn_direction)
    */
 
   // Keep going forward if you are detecting black
-  BT_turn(MOTOR_A, left_motor_drive + 13, MOTOR_D, right_motor_drive + 13);
+
+  BT_turn(MOTOR_A, left_motor_drive + 13, MOTOR_D, right_motor_drive + 13); // was 13
   while (1)
   {
     int colour_detected = scanColour(5);
@@ -566,16 +718,19 @@ int turn_at_intersection(int turn_direction)
       break;
     }
   }
+  char soundPathTurn[100] = "/home/root/lms2012/prjs/a/goofy";
+  BT_play_sound_file(soundPathTurn,100);
+
   if (turn_direction)
   {
     BT_motor_port_stop(MOTOR_D, 1);
-    BT_motor_port_start(MOTOR_A, 15);
+    BT_motor_port_start(MOTOR_A, 20); // 15
     fprintf(stderr, "Turning left\n");
   }
   else
   {
     BT_motor_port_stop(MOTOR_A, 1);
-    BT_motor_port_start(MOTOR_D, 15);
+    BT_motor_port_start(MOTOR_D, 20);
     fprintf(stderr, "Turning right\n");
   }
   sleep(1);
@@ -596,13 +751,34 @@ int turn_at_intersection(int turn_direction)
     }
   }
   sleep(0.5);
+  char soundPathBrake[100] = "/home/root/lms2012/prjs/a/brake";
+  BT_play_sound_file(soundPathBrake,100);
+
   BT_all_stop(1);
   fprintf(stderr, "Finished Turn\n");
   last_turn = turn_direction;
   return (0);
 }
 
-int robot_localization(int *robot_x, int *robot_y, int *direction)
+int locationStillFound(){
+  double certaintyThreshold = 0.6;
+  for (int k=0; k<4; k++)
+    {
+        for (int j=0; j<sy; j++)
+        {
+            for (int i=0; i<sx; i++)
+            {
+                if (beliefs[i+(j*sx)][k] >= certaintyThreshold){
+                  return 1;
+                }
+            }
+        }
+    }
+  return 0;
+}
+
+
+int robot_localization()
 {
   /*  This function implements the main robot localization process. You have to write all code that will control the robot
    *  and get it to carry out the actions required to achieve localization.
@@ -656,32 +832,31 @@ int robot_localization(int *robot_x, int *robot_y, int *direction)
    ***********************************************************************************************************************/
 
   // 0 = FOWARD, 1 = RIGHT, 2 = BACKWARDS, 3 = LEFT
+  char soundPathStreet[100] = "/home/root/lms2012/prjs/a/driveStreet";
+  BT_play_sound_file(soundPathStreet,100);
+
   int moveDir = 0;
   int intersectionsScanned = 0;
-  int detectedRed = drive_along_street();
+  int detectedRed = !drive_along_street();
   int robotX = -1;
   int robotY = -1;
-  int robotDir = -1;
-  int certaintyThreshold = 0.9;
+  int direction = -1;
+  double certaintyThreshold = 0.9;
   int netDir = -1;
 
   // Initial call: get onto an intesection without scanning, then begin localization process
   // Drive along street and if it hits red, update the beliefs to account for turning right
-  while (detectedRed == 0)
+  while (detectedRed)
   {
     turn_at_intersection(0);
-    detectedRed = drive_along_street();
+    detectedRed = !drive_along_street();
   }
 
   // After every iteration, assume we are on an intersection
+  moveDir = 0;
   while (1)
   {
-    moveDir = rand() % 4;
-    while (moveDir == 2)
-    {
-      moveDir = rand() % 4;
-    }
-
+    BT_play_sound_file(soundPathStreet,100);
     netDir = actionModel(moveDir);
 
     // Scan intersection
@@ -698,34 +873,189 @@ int robot_localization(int *robot_x, int *robot_y, int *direction)
 
     int locationFound = 0;
     // Check if we found current location
-    for (int i = 0; i < 15; i++)
+    for (int k=0; k<4; k++)
     {
-      for (int j = 0; j < 4; j++)
-      {
-        if (intersectionsScanned >= 3 && beliefs[i][j] >= certaintyThreshold)
+        for (int j=0; j<sy; j++)
         {
-        locationFound = 1;
-
-        // Integer division to find Y value
-        robotY = i / 3;
-
-        // Mod to find X value
-        robotX = i % 3;
-
-        // Beliefs are stored in 2D array with dir being the 2nd dimension
-        robotDir = j;
+            for (int i=0; i<sx; i++)
+            {
+                if (intersectionsScanned >= 3 && beliefs[i+(j*sx)][k] >= certaintyThreshold){
+                  locationFound = 1;
+                  robotX = i;
+                  robotY = j;
+                  direction = k;
+                  printf("bel: %f \n",beliefs[i+(j*sx)][k]);
+                  printf("Current location is X = %d, Y = %d, driving towards destination now\n", robotX, robotY);
+                }
+            }
         }
-      }
     }
 
     if (locationFound) {
       // TODO: play song here
+      char soundPath[100] = "/home/root/lms2012/prjs/a/localize";
+      BT_play_sound_file(soundPath,100);
 
+      int goingWell = 1;
       printf("**********************************************************************\n");
       printf("Current location is X = %d, Y = %d, driving towards destination now\n", robotX, robotY);
       printf("**********************************************************************\n");
-      if (go_to_target(robotX, robotY, robotDir, dest_x, dest_y))
-      {
+
+      int diffX = dest_x - robotX;
+      int diffY = dest_y - robotY;
+      
+
+      while (diffX != 0 and goingWell) {
+        moveDir = 0;
+        if (diffX < 0) { // Want to rotate to face West
+          if (direction == 0 || direction == 1)
+          {
+            // Turn left
+            while (direction != 3) {
+              turn_at_intersection(1);
+              direction--;
+              moveDir--;
+              if (direction < 0)
+              {
+                direction = 3;
+              }
+            }    
+          } else if(direction == 2){
+            // Turn right
+            turn_at_intersection(0);
+            direction++;
+            moveDir++;
+          }
+        } else if (diffX > 0) { // Want to rotate to face East
+          if (direction == 0 || direction == 3)
+          {
+            // Turn right
+            while (direction != 1) {
+              turn_at_intersection(0);
+              direction++;
+              moveDir++;
+              if (direction > 3)
+              {
+                direction = 0;
+              }
+            }
+          } else if(direction == 2){
+            // Turn left
+            turn_at_intersection(1);
+            direction--;
+            moveDir++;
+          }
+        }
+        moveDir = abs(moveDir % 4);
+        actionModel(0);
+        if (diffX > 0) {
+          diffX--;
+        } else {
+          diffX++;
+        }
+
+        // Scan intersection
+        int tl;
+        int tr;
+        int bl;
+        int br;
+        scan_intersection(&tl, &tr, &br, &bl);
+        int intersectionReadings[4] = {tl, tr, br, bl};
+
+        // Update beliefs
+        updateBelief(moveDir, intersectionReadings);
+
+        printf("****************************************************\n");
+        printf("diffX: %d\n", diffX);
+        printf("****************************************************\n");
+
+        if (!locationStillFound()) {
+          printf("We are lost again\n");
+          goingWell = 0;
+          break;
+        };
+      }
+
+      while(diffY != 0 and goingWell) {
+        moveDir = 0;
+        // Rotate so then we can move along the Y coords
+        if (diffY < 0) { // Want to rotate to face North (positive Y is down, negative is up)
+          if (direction == 2 || direction == 1)
+          {
+            // Turn left
+            while (direction != 0) {
+              turn_at_intersection(1);
+              direction--;
+              moveDir--;
+            }
+          } else if (direction == 3) {
+            // Turn right
+            turn_at_intersection(0);
+            direction = 0;
+            moveDir++;
+          }
+        } else if (diffY > 0) { // Want to rotate to face South (positive Y is down, negative is up)
+          if (direction == 0 || direction == 1)
+          {
+            // Turn right
+            while (direction != 2) {
+              turn_at_intersection(0);
+              direction++;
+              moveDir++;
+              if (direction > 3)
+              {
+                direction = 0;
+              }
+            }
+          } else if (direction == 3) {
+            // Turn left
+            turn_at_intersection(1);
+            direction--;
+            moveDir--;
+          }
+        }
+
+        // Move along Y coords
+        // Assume we are already facing the correct way, so just drive forward
+        moveDir = abs(moveDir % 4);
+        actionModel(0);
+        if (diffY > 0) {
+          diffY--;
+        } else {
+          diffY++;
+        }
+
+        // Scan intersection
+        int tl;
+        int tr;
+        int bl;
+        int br;
+        scan_intersection(&tl, &tr, &br, &bl);
+        int intersectionReadings[4] = {tl, tr, br, bl};
+
+        // Update beliefs
+        updateBelief(moveDir, intersectionReadings);
+        printf("****************************************************\n");
+        printf("diffY: %d\n", diffY);
+        printf("****************************************************\n");
+
+        if (!locationStillFound()) {
+          printf("We are lost again\n");
+          goingWell = 0;
+          break;
+        };
+      }
+
+      if (goingWell){
+        printf("****************************************************\n");
+        printf("****************************************************\n");
+        printf("****************************************************\n");
+        printf("Destination reached\n");
+        printf("****************************************************\n");
+        printf("****************************************************\n");
+        printf("****************************************************\n");
+        char soundPathVic[100] = "/home/root/lms2012/prjs/a/victory";
+        BT_play_sound_file(soundPathVic,100);
         return 1;
       }
     }
@@ -762,6 +1092,8 @@ int go_to_target(int robot_x, int robot_y, int direction, int target_x, int targ
   // 0 = FOWARD, 1 = RIGHT, 2 = BACKWARDS, 3 = LEFT
   int targetDir;
   int diffDir;
+
+  int moveDir = 0;
   
   // Rotate so then we can move along the X coords
   if (diffX < 0) { // Want to rotate to face West
@@ -771,6 +1103,7 @@ int go_to_target(int robot_x, int robot_y, int direction, int target_x, int targ
       while (direction != 3) {
         turn_at_intersection(1);
         direction--;
+        moveDir--;
         if (direction < 0)
         {
           direction = 3;
@@ -780,6 +1113,7 @@ int go_to_target(int robot_x, int robot_y, int direction, int target_x, int targ
       // Turn right
       turn_at_intersection(0);
       direction++;
+      moveDir++;
     }
   } else if (diffX > 0) { // Want to rotate to face East
     if (direction == 0 || direction == 3)
@@ -788,6 +1122,7 @@ int go_to_target(int robot_x, int robot_y, int direction, int target_x, int targ
       while (direction != 1) {
         turn_at_intersection(0);
         direction++;
+        moveDir++;
         if (direction > 3)
         {
           direction = 0;
@@ -797,15 +1132,29 @@ int go_to_target(int robot_x, int robot_y, int direction, int target_x, int targ
       // Turn left
       turn_at_intersection(1);
       direction--;
+      moveDir++;
     }
   }
   
   // Move along X coords
   // Assume we are already facing the correct way, so just drive forward
-  int moveDir = 0;
+  // int moveDir = 0;
+  moveDir %= 4;
   while(diffX != 0)
   {
     actionModel(moveDir);
+
+    // Scan intersection
+    int tl;
+    int tr;
+    int bl;
+    int br;
+    scan_intersection(&tl, &tr, &br, &bl);
+    int intersectionReadings[4] = {tl, tr, br, bl};
+
+    // Update beliefs
+    // updateBelief(netDir, intersectionReadings);
+
     if (diffX > 0)
     {
       diffX--;
@@ -862,7 +1211,6 @@ int go_to_target(int robot_x, int robot_y, int direction, int target_x, int targ
   }
 
   // TODO: add code to determine if we are lost, and if so, rerun localization loop
-
   return 1;
 }
 
@@ -901,7 +1249,7 @@ int scanColour(int n)
   currentMinSquareError = minSquaredError;
 
   free(avg_reading);
-  printf("The sensor is detecting: %s\n", colours[colour - 1]);
+  //printf("The sensor is detecting: %s\n", colours[colour - 1]);
   pastColour = colour;
   return colour;
 }
@@ -960,7 +1308,7 @@ int actionModel(int moveDir) {
   }
   // Drive along street and if it hits red, update the beliefs to account for turning right
   int detectedRed = !drive_along_street();
-  while (!detectedRed)
+  while (detectedRed)
   {
     turn_at_intersection(0);
     // Update belief to turn right

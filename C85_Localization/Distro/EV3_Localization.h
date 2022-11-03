@@ -79,7 +79,7 @@ extern int sx, sy;                                                              
 extern double beliefs[400][4];                                                        // Beliefs for each location and motion direction
 
 int parse_map(unsigned char *map_img, int rx, int ry);
-int robot_localization(int *robot_x, int *robot_y, int *direction);
+int robot_localization();
 int go_to_target(int robot_x, int robot_y, int direction, int target_x, int target_y);
 int find_street(void);
 int drive_along_street(void);
@@ -90,5 +90,6 @@ unsigned char *readPPMimage(const char *filename, int *rx, int*ry);
 int scanColour(int n);
 void getColourReading(int n, double* avg_reading);
 int actionModel(int moveDir);
+void courseCorrect();
 
 #endif

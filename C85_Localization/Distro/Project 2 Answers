@@ -1,0 +1,85 @@
+Group Members: Alton Liu (1006701222), Jackson Han (1005412572), Malhar Pandya (1005893008)
+
+1. What is the total number of probabilities your robot has to keep track of for a map of size m x n?
+
+The number of probabilities is 4(m)(n) because there are 4 directions and m x n intersections
+
+2. What should be the initial value of the probabilities your robot is keeping track of? 
+
+1/(4(m)(n)) because the probability for each intersection and direction must be the same, and the probabilities must equal 1 when summed
+
+3. Describe your strategy for dealing with sensor noise, and explain why it should work and how you tested it.
+
+We take multiple readings when possible and we average them and this should work since the noise is Gaussian. We also account for sensor noise in our perception model, which works because of Markov Localization. We tested by repeatedly checking our colour readings after processing to see if the variance decreased.a
+
+4. Describe your probability update function in detail and explain how you defined 'agreement' as well as how you determined the amount by which to update probabilities. 
+
+To better matrix multiply and get the updated belief we have changed the belief from a 2D matrix to a 3D matrix [j][i][k](we acutally copy the values into a new 3d matrix and copy it back after each update step). For each action (go forward, turn right and go forward to next intersection, turn around and go forward to next intersection, turn left and go forward to next intersection) we have a filter of size [3][3][4](normalized) that represents the motion model of what the probablity is for the robot to have come from that state(Using a corelation filter instead of convolution filter), this differs slightly when when updating for different directions(k value) in the belief. After we have updated the belief with the action that we believe we took we want to normalize the belief matrix before updating the belief with our perseption model. Each intersection has 4 possible buildings and for each correctly scanned building we give 0.8 and 0.2 for each incorrect scan(remember the buildings need to be rotated to account for different directions k). So for a scan that corrects gets all 4 colours it updates the belief value for that state by multiplying 0.8**4 and if all 4 colours were scaned incorrectly it multiplies the state by 0.2**4. After we update each state with what we scanned, we want to normalize the beliefs again and we have just finished one time step for updating the belief.
+
+5. Describe in detail your robot’s exploration strategy – it should be more complex than simply moving in the same direction until hitting the boundary of the map. How did you choose this strategy?
+
+We decided to allow the robot to choose a random direction (except backwards) to go after each intersection scan, that way we would get a good balance of exploring new intersections and rechecking old intersections (in case it was scanned incorrectly)
+
+6. Describe in detail how beliefs are shifted when the robot gets to a boundary. Consider this problem carefully, the correct way to handle this is not obvious. Explain clearly what assumptions regarding the robot's motion support your strategy for shifting belief values in this case.
+
+How we handle boundaries are when we hit a boundary we want to travel back to the previous intersection and make a right turn. Effectively we want to change the action clockwise, so if we went straight and we ran into the boundary, we want to change our action to turn right. We keep doing
+this until we find a new intersection and keep track of what the net action was that resulted in arriving at the new intersection. This way doesn't use they information we hit
+a boundary to further update our belief but our update belief can definitely be changed to also use that information, it just seemed unnessary as 3 intersection scans would get us localized anyway.
+
+7. Describe in detail how beliefs are shifted when the robot turns 90 degrees (either left or right) without going to a different intersection. Describe your assumptions about robot motion, and how these support your strategy for handling this case.
+The belief is not shifted when robots just turn 90 deg. Motions/actions in our system are defined as both the turning of the robot plus the forward movement that gets it to the next intersection.
+The beliefs are shifted based on our action models, which give a 80% chance that we turned 90 when we said we turn 90 deg. The rest 20% are to account for if we turn and we missed the first or even second street so 
+instead of turning 90 deg right when we tell it to, it might instead have turn 180 deg or 270 deg, of course this could keep going.
+
+8. Explain your method for deciding when the robot has achieved correct localization.
+
+When belief has reached over 90% for any state. It continues to make sure the belief remains high as we navigate ourselves to the destination, if our belief drops, we go back to just running localiztion.
+
+9. Briefly explain your robot design choices, including sensor placement and robot mobility considerations.
+
+We decided to attach the sensor to a movable arm that actuated left and right to simplify scanning intersections. We also put the sensor in front of the robot at a distance such that when the robot detects an intersection, the wheels are in position to turn on the previous intersection. We also made the wheel base narrow so then we would have a smaller turn circle.
+
+10. What parameters did you find affect the most the ability of the robot to determine its location?
+
+The quality of the map was definitely the most significant factor in robot localization since if the map was damaged the sensors would often read the incorrect number, misleading the robot's localization. Motor inconsistency was also a major factor as it could cause our robot to be misaligned when scanning intersections.
+
+11. Can external factors (illumination in the room, for example) affect the ability of the robot to find itself?
+
+No, external factors would not affect the robot since we have a light shield around the sensor to protect against light.
+
+12. On average, how many intersections does your robot need to visit to achieve successful localization?
+
+3
+
+13. Are there locations in the map that make localization harder? (i.e. does it matter where your robot starts its journey? Why?)
+
+There are multiple intersections that have the same order of colours, but oriented different, so starting here would confuse the robot until the next intersection scan. Also, starting in a corner would mean that the robot would likely hit the border and would have to perform multiple turns to leave the corner, taking longer to scan other intersections and therefore localize.
+
+Feedback:
+1. The main steps of a robot localization algorithm
+
+Yes
+
+2. Dealing with real-world sensors
+
+Yes
+
+3. Dealing with real-world motors and robot motions
+
+Yes
+
+4. Using probabilities to keep track of belief about a robot's position
+
+Yes
+
+5. Managing uncertainty (e.g. in the quality of sensor readings, or accuracy of robot motions)
+
+Yes
+
+6. Do you feel confident you could implement a probabilistic localization algorithm for a more complex robot, working in a real world environment? (please explain your answer)
+
+Yes, because the fundamentals are the same because of how general Markov Localization is, so we would be able to transfer our knowledge from this project to a bigger, more complex project
+
+7. Any other comments regarding your experience with this project?
+
+Nope
