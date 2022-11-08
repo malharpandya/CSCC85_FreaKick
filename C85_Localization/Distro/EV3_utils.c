@@ -1,5 +1,6 @@
-
+// #define debug	
 #include "EV3_Localization.h"
+#include "EV3_utils.h"
 
 typedef double model[4][3][3];
 
@@ -102,6 +103,7 @@ model* driveForwardModel[4] = {
                                     &driveForwardModelFacingDown,
                                     &driveForwardModelFacingLeft
                                 };
+
 
 double turnLeftModelFacingUp[4][3][3] =     {
                                       // Facing up
@@ -466,37 +468,85 @@ model** getMotionModel(int action){
     }
 }
 
+void printOutMotionModel(model *motionModel) {
+    fprintf(stderr, "Printing out Motion Model\n");
+    for (int k=0; k<4; k++)
+    {
+        for (int j=0; j<3; j++)
+        {
+            for (int i=0; i<3; i++) 
+                fprintf(stderr,"[%d][%d][%d]%f ",k, j, i, (*motionModel)[k][j][i]);
+                // fprintf(stderr,"%f ", (*motionModel)[k][j][i]);
+            fprintf(stderr, "\n");
+        }
+        fprintf(stderr,"\n");
+    }
+}
 
-double convol(double ***beliefs, model *motionModel, int i, int j, int k) {
+double convol(double ***belief, model *motionModel, int i, int j, int k) {
     int padding = 1;
     int mj = 1; // Motion model j center
     int mi = 1;
+    i += padding;
+    j += padding;
     double sum = 0;
+    // fprintf(stderr, "convol %d %d %d\n", k, j, i);
+    // printOutMyBeliefs(belief);
+    // printf("motionModel pointer: %p\n", motionModel);
+    // printOutMotionModel(motionModel);
+
+
+    // printOutMotionModel(&turnRightModelFacingRight);
     for (int dir = 0; dir < 4; dir++) { // IDT we need the direction
         for (int j_offset = -1; j_offset < 2 ; j_offset++) {
             for (int i_offset = -1; i_offset < 2; i_offset++) {
-                sum += *motionModel[dir][mj+j_offset][mi+i_offset] * beliefs[j+j_offset][i+i_offset][dir];//beliefs[(i+i_offset)+((j+j_offset)*sx)][dir];
+                // fprintf(stderr, "%d %d %d - ", dir, mj+j_offset, mi+i_offset);
+                // fprintf(stderr,"[%d][%d][%d] - %f %f\n",dir, mj+j_offset, mi+i_offset, (*motionModel)[dir][mj+j_offset][mi+i_offset], belief[j+j_offset][i+i_offset][dir]);//beliefs[(i+i_offset)+((j+j_offset)*sx)][dir]);
+                // printf("motionModel pointer: %p\n", motionModel);
+                sum += ((*motionModel)[dir][mj+j_offset][mi+i_offset]) * belief[j+j_offset][i+i_offset][dir];//beliefs[(i+i_offset)+((j+j_offset)*sx)][dir];
+                // fprintf(stderr, "in sum: %f\n", sum);
             }
         }
     }
+    // printf("sum: %f\n", sum);
     return sum;
 }
 
-void normailize(double ***beliefs){
+// void normalize(double ***belief){
+//     double sum = 0;
+//     for (int j=0; j<sy; j++)
+//         for (int i=0; i<sx; i++)
+//             for (int k=0; k<4; k++){
+//                 if (belief[j][i][k] == 0.0) {belief[j][i][k]=0.0001;}
+//                 sum += belief[j][i][k];
+//             }
+                
+    
+//     for (int j=0; j<sy; j++)
+//         for (int i=0; i<sx; i++)
+//             for (int k=0; k<4; k++)
+//                 belief[j][i][k] /= sum;
+
+// }
+
+// normailze Paco's belief
+void normalize(){
     double sum = 0;
     for (int j=0; j<sy; j++)
         for (int i=0; i<sx; i++)
-            for (int k=0; k<4; k++)
-                sum += beliefs[j][i][k];
+            for (int k=0; k<4; k++){
+                if (beliefs[i+(j*sx)][k] == 0.0) {beliefs[i+(j*sx)][k]=0.0001;}
+                sum += beliefs[i+(j*sx)][k];
+            }
+                
     
     for (int j=0; j<sy; j++)
         for (int i=0; i<sx; i++)
             for (int k=0; k<4; k++)
-                beliefs[j][i][k] /= sum;
-
+                beliefs[i+(j*sx)][k] /= sum;
 }
 
-double updateBeliefBasedOnAction(double **beliefs, int action) {
+double updateBeliefBasedOnAction(int action) {
     /*
         action  0: forward
                 1: right turn
@@ -504,6 +554,8 @@ double updateBeliefBasedOnAction(double **beliefs, int action) {
                 3: left turn
     */
     model **motionModel = getMotionModel(action);
+    // printf("action::: %d\n", action);
+    // printOutMotionModel(*motionModel);
     int padding = 1;
     // use sx and sy 
     // double myBeliefs[sy+2*padding][sx+2*padding][4];
@@ -515,6 +567,8 @@ double updateBeliefBasedOnAction(double **beliefs, int action) {
             myBeliefs[j][i] = (double*) calloc(4, sizeof *myBeliefs[j][i]);
     }
 
+    // printOutMyBeliefs(myBeliefs);
+
     // double newBeliefs[sy][sx][4]; //TODO calloc and free it all
     double ***newBeliefs;
     newBeliefs = (double ***) calloc(sy, sizeof *newBeliefs);
@@ -523,6 +577,8 @@ double updateBeliefBasedOnAction(double **beliefs, int action) {
         for (int i = 0; i < sx; i++)
             newBeliefs[j][i] = (double*) calloc(4, sizeof *newBeliefs[j][i]);
     }
+
+    // printOutNewBeliefs(newBeliefs);
     
     // memset(myBeliefs, 0, sizeof(double) * (sx+2*padding) * (sy+2*padding) * 4);
     for (int j=0; j<sy; j++)
@@ -538,24 +594,118 @@ double updateBeliefBasedOnAction(double **beliefs, int action) {
             }
         }
     }
-    normailize(newBeliefs);
+
+    // printOutNewBeliefs(newBeliefs);
+    // normalize(newBeliefs);
     for (int j=0; j<sy; j++)
         for (int i=0; i<sx; i++)
             for (int k=0; k<4; k++)
                 beliefs[i+(j*sx)][k] = newBeliefs[j][i][k];
+    normalize();
+
+    for (int j = 0; j < (sy+2*padding); j++){
+        for (int i = 0; i < sx+2*padding; i++)
+            free(myBeliefs[j][i]);
+        free(myBeliefs[j]);
+    }
+    free(myBeliefs);
+
+    for (int j = 0; j < sy; j++){
+        for (int i = 0; i < sx; i++)
+            free(newBeliefs[j][i]);
+        free(newBeliefs[j]);
+    }
+    free(newBeliefs);
+    return 0;
 }
 
 void updateperceptionModel();
 
-void updateBeliefBasedOnSensorReading(){
+void rotateSensorReadings(int readings[4]) {
+    int temp = readings[0];
+    readings[0] = readings[3];
+    readings[3] = readings[2];
+    readings[2] = readings[1];
+    readings[1] = temp;
+    /*
+        int temp = readings[0];
+    readings[0] = readings[1];
+    readings[1] = readings[3];
+    readings[3] = readings[2];
+    readings[2] = temp;
+    */
+}
+
+double readingsMatchMap(int readings[4], int j,int i){
+    double updateFactor = 1.0;
+    for (int b = 0; b < 4 ; b++) {
+        // printf("%d ", map[i+j*sx][b]);
+        updateFactor *= (map[i+j*sx][b] == readings[b]) ? 0.8 : 0.2;
+    }
+    return updateFactor;
+}
+
+void updateBeliefBasedOnSensorReading(int readings[4]){
     for (int k = 0; k < 4; k++) {
+        for (int j=0; j<sy; j++) {
+            for (int i=0; i<sx; i++) {
+                // printf("k: %d j: %d i: %d \n", k, j, i);
+                beliefs[i+(j*sx)][k] *= readingsMatchMap(readings, j, i);
+            }
+        }
+        // printf("Rotating\n");
+        rotateSensorReadings(readings);
+        for (int c = 0; c < 4; c++) {printf("%d",readings[c]);}
+    }
+    normalize();
+}
+
+void printOutBeliefs() {
+    fprintf(stderr, "Printing out Belief Table\n");
+    for (int k=0; k<4; k++)
+    {
         for (int j=0; j<sy; j++)
+        {
             for (int i=0; i<sx; i++)
-                break;
+                fprintf(stderr,"%f ",beliefs[i+(j*sx)][k]);
+            fprintf(stderr, "\n");
+        }
+        fprintf(stderr,"\n");
     }
 }
 
-void updateBelief(double **beliefs, int action, double intersectionReadings[4]) {
+void printOutMyBeliefs(double ***myBeliefs){
+    fprintf(stderr, "Printing out My Belief Table\n");
+    int padding = 1;
+    for (int k=0; k<4; k++)
+    {
+        for (int j=0; j<sy+2*padding; j++)
+        {
+            for (int i=0; i<sx+2*padding; i++)
+                fprintf(stderr,"%f ",myBeliefs[j][i][k]);
+            fprintf(stderr, "\n");
+        }
+        fprintf(stderr,"\n");
+    }
+}
+
+void printOutNewBeliefs(double ***newBeliefs){
+    fprintf(stderr, "Printing out New Belief Table\n");
+    for (int k=0; k<4; k++)
+    {
+        for (int j=0; j<sy; j++)
+        {
+            for (int i=0; i<sx; i++)
+                fprintf(stderr,"%f ",newBeliefs[j][i][k]);
+            fprintf(stderr, "\n");
+        }
+        fprintf(stderr,"\n");
+    }
+}
+
+
+
+void updateBelief(int action, int intersectionReadings[4]) {
     /*
         beliefs is of format [][4]
         int action [0..3]
@@ -564,6 +714,23 @@ void updateBelief(double **beliefs, int action, double intersectionReadings[4]) 
     
     // What is the true direction of the colour reading (convert it)
 
+    #ifdef debug 
+        action = 0; // Go forward 
+        intersectionReadings[0] = 6; // White
+        intersectionReadings[1] = 3; // Green 
+        intersectionReadings[2] = 2; // Blue
+        intersectionReadings[3] = 2; // Blue
+    #endif
+    fprintf(stderr, "action: %d, readings %d %d %d %d\n", action, intersectionReadings[0],intersectionReadings[1], intersectionReadings[2],intersectionReadings[3]);
+    // printOutBeliefs();
+
+    updateBeliefBasedOnAction(action);
+
+    // printOutBeliefs();
+
+
+    updateBeliefBasedOnSensorReading(intersectionReadings);
+    printOutBeliefs();
 
 
     // TODO what relationship between a multidimensional matrix and its pointer address
