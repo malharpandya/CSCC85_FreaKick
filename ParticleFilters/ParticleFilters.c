@@ -271,7 +271,39 @@ void ParticleFilterLoop(void)
     //        You should see a moving robot and sonar figure with
     //        a set of moving particles.
     ******************************************************************/
-
+    // move all particles (and the robot at the end)
+    double dist = 1;
+    struct particle* p = list;
+    for (int i = 0; i < n_particles+1; i++)
+    {
+      double curr_x = p->x;
+      double curr_y = p->y;
+      double curr_theta = p->theta;
+      move(p, dist);
+      // check if hit an obstacle
+      int threshold = 20;
+      int count = 0;
+      while (hit(p, map, sx, sy) && count < threshold)
+      {
+        // revert position and randomize direction
+        p->x = curr_x;
+        p->y = curr_y;
+        p->theta = curr_theta + 10*count; // NEED TO RANDOMIZE
+        move(p, dist);
+        count++;
+      }
+      // find ground truth (update sensor reading)
+      ground_truth(p, map, sx, sy);
+      // go to next particle if not last particle
+      if (p->next != NULL)
+      {
+        p = p->next;
+      } else if (p != robot)
+      {
+        p = robot;
+      }
+    }
+    
     // Step 2 - The robot makes a measurement - use the sonar
     sonar_measurement(robot, map, sx, sy);
 
@@ -289,6 +321,28 @@ void ParticleFilterLoop(void)
     //        that agree with the robot's position/direction
     //        should be brightest.
     *******************************************************************/
+    // Compute likelihood for all particles
+    p = list;
+    double total_probability = 0;
+    for (int i = 0; i < n_particles; i++)
+    {
+      computeLikelihood(p, robot, 20);
+      total_probability += p->prob;
+      if (p->next != NULL)
+      {
+        p = p->next;
+      }
+    }
+    // reweight probabilities so that they sum to 1;
+    p = list;
+    for (int i = 0; i < n_particles; i++)
+    {
+      p->prob = p->prob / total_probability;
+      if (p->next != NULL)
+      {
+        p = p->next;
+      }
+    }
 
     // Step 4 - Resample particle set based on the probabilities. The goal
     //          of this is to obtain a particle set that better reflect our
