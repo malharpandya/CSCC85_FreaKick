@@ -306,7 +306,8 @@ void ParticleFilterLoop(void)
       if (p->next != NULL)
       {
         p = p->next;
-      } else if (p != robot)
+      }
+      else if (p != robot)
       {
         p = robot;
       }
