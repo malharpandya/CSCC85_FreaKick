@@ -50,6 +50,13 @@ int RESETflag;          // RESET particles
 /**********************************************************
  PROGRAM CODE
 **********************************************************/
+static int compare (const void * a, const void * b)
+{
+  if (*(double*)a > *(double*)b) return 1;
+  else if (*(double*)a < *(double*)b) return -1;
+  else return 0;
+}
+
 int main(int argc, char *argv[])
 {
   /*
@@ -229,7 +236,7 @@ void computeLikelihood(struct particle *p, struct particle *rob, double noise_si
     double error = (p->measureD[i]) - (rob->measureD[i]);
 
     // Convert error into probability according to a Gaussian distribution with sigma of 20 and add to sum of probabilities for averaging later
-    sumProb += normal_pdf(error, 0, noise_sigma);
+    sumProb += GaussEval(error, noise_sigma);
   }
 
   // Divide sum of probabilities by number of sonar slices (16) and assign average probability to particle
@@ -288,7 +295,7 @@ void ParticleFilterLoop(void)
         // revert position and randomize direction
         p->x = curr_x;
         p->y = curr_y;
-        p->theta = curr_theta + 10*count; // NEED TO RANDOMIZE
+        p->theta = drand48()*360; // NEED TO RANDOMIZE
         move(p, dist);
         count++;
       }
@@ -374,7 +381,44 @@ void ParticleFilterLoop(void)
     //        Hopefully the largest cluster will be on and around
     //        the robot's actual location/direction.
     *******************************************************************/
+    // generate n_particles uniform [0, 1] numbers and sort them
+    double mu[n_particles];
+    for (int i = 0; i < n_particles; i++)
+    {
+      mu[i] = drand48();
+    }
+    qsort(mu, n_particles, sizeof(double), compare);
+    // generate new list of n_particles from this
+    p = list;
+    double running_total_probability = 0;
+    struct particle *newlist = NULL;
+    for (int i = 0; i < n_particles; i++)
+    {
+      double threshold = mu[i];
 
+      while (running_total_probability <= threshold);
+      {
+        running_total_probability += p->prob;
+        if (p->next != NULL)
+        {
+          p = p->next;
+        }
+      }
+      //duplicate the particle
+      struct particle* resampled_p = initRobot(map, sx, sy);
+      resampled_p->prob = 1 / (double)n_particles;
+      resampled_p->theta = p->theta;
+      resampled_p->x = p->x;
+      resampled_p->y = p->y;
+      // add it to the new list
+      resampled_p->next = newlist;
+      newlist = resampled_p;
+    }
+    
+    // deleteList
+    deleteList(list);
+    // set list to new list
+    list = newlist;
   } // End if (!first_frame)
 
   /***************************************************
