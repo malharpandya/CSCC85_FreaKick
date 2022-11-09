@@ -279,6 +279,7 @@ void ParticleFilterLoop(void)
     //        a set of moving particles.
     ******************************************************************/
     // move all particles (and the robot at the end)
+    printf("Step 1\n");
     double dist = 1;
     struct particle* p = list;
     for (int i = 0; i < n_particles+1; i++)
@@ -312,6 +313,7 @@ void ParticleFilterLoop(void)
     }
     
     // Step 2 - The robot makes a measurement - use the sonar
+    printf("Step 2\n");
     sonar_measurement(robot, map, sx, sy);
 
     // Step 3 - Compute the likelihood for particles based on the sensor
@@ -329,6 +331,7 @@ void ParticleFilterLoop(void)
     //        should be brightest.
     *******************************************************************/
     // Compute likelihood for all particles
+    printf("Step 3\n");
     p = list;
     double total_probability = 0;
     for (int i = 0; i < n_particles; i++)
@@ -381,32 +384,37 @@ void ParticleFilterLoop(void)
     //        Hopefully the largest cluster will be on and around
     //        the robot's actual location/direction.
     *******************************************************************/
-    // generate n_particles uniform [0, 1] numbers and sort them
-    double mu[n_particles];
-    for (int i = 0; i < n_particles; i++)
+   printf("Step 4\n");
+    int resample_size = round(0.9*n_particles);
+    int random_size = n_particles-resample_size;
+    // generate resample_size uniform [0, 1] numbers and sort them
+    double mu[resample_size];
+    for (int i = 0; i < resample_size; i++)
     {
       mu[i] = drand48();
     }
-    qsort(mu, n_particles, sizeof(double), compare);
+    qsort(mu, resample_size, sizeof(double), compare);
     // generate new list of n_particles from this
     p = list;
+    int j = 0;
     double running_total_probability = 0;
     struct particle *newlist = NULL;
-    for (int i = 0; i < n_particles; i++)
+    // add resampled particles to list
+    for (int i = 0; i < resample_size; i++)
     {
       double threshold = mu[i];
-
-      while (running_total_probability <= threshold);
+      while (running_total_probability <= threshold)
       {
         running_total_probability += p->prob;
         if (p->next != NULL)
         {
           p = p->next;
+          j++;
         }
       }
       //duplicate the particle
       struct particle* resampled_p = initRobot(map, sx, sy);
-      resampled_p->prob = 1 / (double)n_particles;
+      resampled_p->prob = 1/(double) n_particles;
       resampled_p->theta = p->theta;
       resampled_p->x = p->x;
       resampled_p->y = p->y;
@@ -414,7 +422,18 @@ void ParticleFilterLoop(void)
       resampled_p->next = newlist;
       newlist = resampled_p;
     }
-    
+    // add random particles to list
+    printf("going into loop\n");
+    for (int i = 0; i < random_size; i++)
+    {
+      struct particle* random_p = initRobot(map, sx, sy);
+      random_p->prob = 1/(double) n_particles;
+      // add it to the new list
+
+      printf("HERE\n");
+      random_p->next = newlist;
+      newlist = random_p;
+    }
     // deleteList
     deleteList(list);
     // set list to new list
