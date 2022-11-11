@@ -229,18 +229,17 @@ void computeLikelihood(struct particle *p, struct particle *rob, double noise_si
   //        likelihood given the robot's measurements (DONE)
   ****************************************************************/
 
-  double sumProb = 0;
+  double sum_squared = 0;
   for (int i = 0; i < 16; i++)
   {
     // Calculate error for each slice
     double error = (p->measureD[i]) - (rob->measureD[i]);
-
-    // Convert error into probability according to a Gaussian distribution with sigma of 20 and add to sum of probabilities for averaging later
-    sumProb += GaussEval(error, noise_sigma);
+    sum_squared += pow(error, 2);
   }
 
   // Divide sum of probabilities by number of sonar slices (16) and assign average probability to particle
-  p->prob = sumProb / 16;
+  //p->prob = sumProb / 16;
+  p->prob = 1/sum_squared;
 }
 
 void ParticleFilterLoop(void)
@@ -279,7 +278,6 @@ void ParticleFilterLoop(void)
     //        a set of moving particles.
     ******************************************************************/
     // move all particles (and the robot at the end)
-    printf("Step 1\n");
     double dist = 1;
     struct particle* p = list;
     for (int i = 0; i < n_particles+1; i++)
@@ -314,7 +312,6 @@ void ParticleFilterLoop(void)
     }
     
     // Step 2 - The robot makes a measurement - use the sonar
-    printf("Step 2\n");
     sonar_measurement(robot, map, sx, sy);
 
     // Step 3 - Compute the likelihood for particles based on the sensor
@@ -332,7 +329,6 @@ void ParticleFilterLoop(void)
     //        should be brightest.
     *******************************************************************/
     // Compute likelihood for all particles
-    printf("Step 3\n");
     p = list;
     double total_probability = 0;
     for (int i = 0; i < n_particles; i++)
@@ -385,7 +381,6 @@ void ParticleFilterLoop(void)
     //        Hopefully the largest cluster will be on and around
     //        the robot's actual location/direction.
     *******************************************************************/
-   printf("Step 4\n");
     int resample_size = round(0.9*n_particles);
     int random_size = n_particles-resample_size;
     // generate resample_size uniform [0, 1] numbers and sort them
@@ -424,17 +419,28 @@ void ParticleFilterLoop(void)
       newlist = resampled_p;
     }
     // add random particles to list
-    printf("going into loop\n");
-    for (int i = 0; i < random_size; i++)
+    int total_random_samples = 0;
+    while (total_random_samples < random_size)
     {
+      //printf("Still inside while loop, total_random_samples: %d, iteration_count: %d\n", total_random_samples, iteration_count);
       struct particle* random_p = initRobot(map, sx, sy);
-      random_p->prob = 1/(double) n_particles;
-      // add it to the new list
-
-      printf("HERE\n");
-      random_p->next = newlist;
-      newlist = random_p;
+      computeLikelihood(random_p, robot, 20);
+      if (random_p->prob > 0.00002)
+      {
+        total_random_samples++;
+        random_p->next = newlist;
+        newlist = random_p;
+      }
     }
+    // for (int i = 0; i < random_size-total_random_samples; i++)
+    // {
+    //   struct particle* random_p = initRobot(map, sx, sy);
+    //   random_p->prob = 1/(double) n_particles;
+    //   // add it to the new list
+
+    //   random_p->next = newlist;
+    //   newlist = random_p;
+    // }
     // deleteList
     deleteList(list);
     // set list to new list
