@@ -27,7 +27,7 @@
 #include <stdlib.h>
 
 // Change this to match the ports your bots motors are connected to
-#define LEFT_MOTOR MOTOR_D
+#define LEFT_MOTOR MOTOR_B
 #define RIGHT_MOTOR MOTOR_A
 
 #define AI_SOCCER 0 	// Play soccer!
@@ -150,5 +150,23 @@ struct displayList *clearDP(struct displayList *head);
    Add headers for your own functions implementing the bot's soccer
    playing functionality below.
 *****************************************************************************/
+
+//Events 
+#define SUCCESS 0 
+#define FAIL 1
+#define RESET 2
+#define NOT_ALIGNED_WITH_BALL 3
+
+void move_forward(struct RoboAI *ai, struct blob *blobs); 
+void calculate_heading_direction_forward(struct RoboAI *ai, struct blob *blobs);
+void move_backward(struct RoboAI *ai, struct blob *blobs);
+void calculate_heading_direction_backward(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_ball(struct RoboAI *ai, struct blob *blobs);
+
+void shift_to_rotate_mode_ccw(struct RoboAI *ai, struct blob *blobs);
+void shift_to_rotate_mode_cw(struct RoboAI *ai, struct blob *blobs);
+void rotate(struct RoboAI *ai, struct blob *blobs);
+void rotate_180_towards_ball(struct RoboAI *ai, struct blob *blobs);
+void move_towards_ball(struct RoboAI *ai, struct blob *blobs);
 
 #endif

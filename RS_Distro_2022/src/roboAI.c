@@ -33,6 +33,9 @@ extern int sx;              // Get access to the image size from the imageCaptur
 extern int sy;
 int laggy=0;
 
+void (*state_functions[300]) (struct RoboAI *ai, struct blob *blobs);
+int T[300][20];
+
 /**************************************************************
  * Display List Management
  * 
@@ -556,7 +559,7 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
         ai->st.state=0;		// <-- Set AI initial state to 0
         break;
  case AI_PENALTY:
-// 	fprintf(stderr,"Penalty mode! let's kick it!\n");
+  fprintf(stderr,"Penalty mode! let's kick it!\n");
 	ai->st.state=100;	// <-- Set AI initial state to 100
         break;
  case AI_CHASE:
@@ -598,6 +601,16 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
  ai->st.oppID=0;
  ai->st.ballID=0;
  ai->DPhead=NULL;
+
+ state_functions[201] = rotate_towards_ball;
+ state_functions[202] = rotate;
+ state_functions[203] = move_towards_ball;
+
+ T[201][SUCCESS] = 202;
+ T[202][SUCCESS] = 203;
+ T[203][NOT_ALIGNED_WITH_BALL] = 201;
+
+
  fprintf(stderr,"Initialized!\n");
 
  return(1);
@@ -687,7 +700,6 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
                               
   ** Do not change the behaviour of the robot ID routine **
  **************************************************************************/
-
   static double ux,uy,len,mmx,mmy,tx,ty,x1,y1,x2,y2;
   double angDif;
   char line[1024];
@@ -773,8 +785,20 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
    state transitions and with calling the appropriate function based on what
    the bot is supposed to be doing.
   *****************************************************************************/
-//  fprintf(stderr,"Just trackin'!\n");	// bot, opponent, and ball.
-//  track_agents(ai,blobs);		// Currently, does nothing but endlessly track
+  fprintf(stderr,"Just trackin'!\n");	// bot, opponent, and ball.
+  track_agents(ai,blobs);		// Currently, does nothing but endlessly track
+  (*state_functions[ai->st.state]) (ai, blobs);
+//   if (ai -> st.state == 1) {
+
+//   } else if (ai -> st.state == 101) {
+    
+//   } else if (ai -> st.state == 201) {
+//     fprintf(stderr,"Just trackin'!\n");	// bot, opponent, and ball.
+//     track_agents(ai,blobs);		// Currently, does nothing but endlessly track
+  
+//     // Have some transition table? 
+//     (*state_functions[ai->st.state]) (ai, blobs);
+//   }
  }
 
 }
@@ -793,4 +817,177 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
  there.
 **********************************************************************************/
 
+void move_forward(struct RoboAI *ai, struct blob *blobs)
+{
+  // Set back wheels to the middle (shouldn't be an issue)
+  // Drive forward for 1 second
+  BT_timed_motor_port_start_v2(MOTOR_A, -100, 1000);
+  // Update State
+  ai->st.state = 202; //Need a transition table
+}
 
+void calculate_heading_direction_forward(struct RoboAI *ai, struct blob *blobs)
+{
+  // Did we find ourselves and the ball
+  // if (selfID == 0 || ballID == 0) {
+  //   ai->st.state = 200 // Need a transition table T[ai->st.state][event]
+  // }
+  // Find change in bot position
+  ai->st.self->cx - ai->st.old_scx;
+  ai->st.self->cy - ai->st.old_scy;
+
+  // check magnitude of vector is bigger than a threshold
+
+  //
+
+  // If can't find change we set to move_backward state
+  // Else calculate and set the heading direction
+  // Update State
+}
+
+void move_backward(struct RoboAI *ai, struct blob *blobs)
+{
+  // Set backwheels to the middle (shouldn't be an issue)
+  // Drive backward for 1 second 
+  // Update State
+}
+
+void calculate_heading_direction_backward(struct RoboAI *ai, struct blob *blobs)
+{
+  // Find change in bot position
+  // If can't find change we set to initial state
+  // Else calculate and set the heading direction
+  // Update State
+}
+
+void rotate_towards_ball(struct RoboAI *ai, struct blob *blobs)
+{
+  // Find the angle difference between heading direction(might not be accurate) and the vector pointed towards the ball
+  double x = ai->st.ball->cx - ai->st.self->cx;
+  double y = ai->st.ball->cy - ai->st.self->cy;
+  fprintf(stderr, "x: %f\n", x);
+  fprintf(stderr, "y: %f\n", y);
+  fprintf(stderr, "mx:%f\n", (ai->st.self->mx));
+  fprintf(stderr, "top:%f\n", (x*ai->st.self->mx+y*ai->st.self->my));
+  fprintf(stderr, "bot:%f\n", ((sqrt(pow(x,2)+pow(y,2)))*(sqrt(pow(ai->st.self->mx,2) + pow(ai->st.self->my,2)))));
+  // Need to switch to us mx and my from dx and dy
+  double theta = acos((x*ai->st.self->dx+y*ai->st.self->dy) / ((sqrt(pow(x,2)+pow(y,2)))*(sqrt(pow(ai->st.self->dx,2) + pow(ai->st.self->dy,2))))); 
+  fprintf(stderr,"theta %f\n", theta);
+  // Start rotating towards it
+  
+  BT_timed_motor_port_start_v2(MOTOR_D, -55, 1000);
+  sleep(1);
+
+  ai->st.state = T[ai->st.state][SUCCESS];
+  fprintf(stderr, "new state:%d\n", ai->st.state);
+  // If the difference in angle is small enought -> update state
+  // else stay in same state
+}
+
+//probably turn this into helper function, since this is too general for it to be a state
+void shift_to_rotate_mode_ccw(struct RoboAI *ai, struct blob *blobs)
+{
+  BT_motor_port_start(MOTOR_D, -55);
+  sleep(1);
+  ai->st.state = T[ai->st.state][SUCCESS];
+}
+
+void shift_to_rotate_mode_cw(struct RoboAI *ai, struct blob *blobs)
+{
+  BT_motor_port_start(MOTOR_D, 55);
+  sleep(1);
+  ai->st.state = T[ai->st.state][SUCCESS];
+}
+
+void rotate(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr, "rotating\n");
+  fprintf(stderr, "ball %d self %d\n", ai->st.ballID, ai->st.selfID);
+  fprintf(stderr, "ah ball x:%f \n",ai->st.ball->cx);
+  fprintf(stderr, "ah ball y:%f \n",ai->st.ball->cy);
+  
+  fprintf(stderr, "eh bot x:%f \n",ai->st.self->cx);
+  fprintf(stderr, "eh bot x:%f \n",ai->st.self->cy);
+
+  double x = ai->st.ball->cx - ai->st.self->cx;
+  double y = (ai->st.ball->cy - ai->st.self->cy);
+  double length = sqrt(pow(x,2) + pow(y,2));
+  x = x/length;
+  y = y/length;
+  fprintf(stderr, "x: %f\n", x);
+  fprintf(stderr, "y: %f\n", y);
+  fprintf(stderr, "dx:%f\n", (ai->st.self->dx));
+  fprintf(stderr, "dx:%f\n", (ai->st.self->dy));
+  fprintf(stderr, "top:%f\n", (x*ai->st.self->dx+y*ai->st.self->dy));
+  fprintf(stderr, "bot:%f\n", ((sqrt(pow(x,2)+pow(y,2)))*(sqrt(pow(ai->st.self->dx,2) + pow(ai->st.self->dy,2)))));
+  double theta = acos((x*ai->st.self->dx+y*ai->st.self->dy) / ((sqrt(pow(x,2)+pow(y,2)))*(sqrt(pow(ai->st.self->dx,2) + pow(ai->st.self->dy,2)))));
+  fprintf(stderr, "theta %f\n\n\n", theta);
+  if ((theta > -0.5 && theta < 0.5) || theta > 3)
+  {
+    fprintf(stderr,"aligned\n");
+    BT_all_stop(1);
+
+    BT_motor_port_start(MOTOR_D, 55);
+    while (true) {
+      if (BT_read_touch_sensor(PORT_1)) {
+        fprintf(stderr,"centered\n");
+        BT_all_stop(1);
+        break;
+      }
+    }
+
+    ai->st.state = T[ai->st.state][SUCCESS];
+    return;
+  }
+  // BT_timed_motor_port_start_v2(MOTOR_A, -100, 3000);
+  BT_motor_port_start(MOTOR_A, -100);
+
+  // BT_all_stop(1);
+  // sleep(0.2);
+  // BT_all_stop(1);
+  // sleep(1);
+  // BT_motor_port_start(MOTOR_A, -100);
+}
+
+void rotate_180_towards_ball(struct RoboAI *ai, struct blob *blobs)
+{
+  // start rotating 
+  // sleep
+  // same steps are rotate_towards_ball, except rotation direction is alread decided
+  // double theta = acos(dot(v,w) / ((sqrt(vpow(x,2)+vpow(y,2)))*(sqrt(wpow(x,2) + wpow(y,2)))));
+  // fprintf("theta angle towards ball %f", theta);
+  // if (theta < 0.3)
+  // {
+    
+  // }
+}
+
+void move_towards_ball(struct RoboAI *ai, struct blob *blobs)
+{
+  double x = ai->st.ball->cx - ai->st.self->cx;
+  double y = (ai->st.ball->cy - ai->st.self->cy);
+  double length = sqrt(pow(x,2) + pow(y,2));
+  if (length < 10) {
+    BT_all_stop(1);
+    return;
+  }
+  x = x/length;
+  y = y/length;
+  // If close enough to ball -> stay at same state and return 
+  // Check the angle with the ball is still below threshold
+  // If not update state to rotate_towards_ball
+  // Drive foward 
+  double theta = acos((x*ai->st.self->dx+y*ai->st.self->dy) / ((sqrt(pow(x,2)+pow(y,2)))*(sqrt(pow(ai->st.self->dx,2) + pow(ai->st.self->dy,2)))));
+  fprintf(stderr, "theta %f\n\n\n", theta);
+  if (!((theta > -0.5 && theta < 0.5) || theta > 3))
+  {
+    BT_all_stop(1);
+    ai->st.state = T[ai->st.state][NOT_ALIGNED_WITH_BALL];
+    return;
+  }
+  BT_timed_motor_port_start_v2(MOTOR_A, -100, 3000);
+}
+void penalty_kick(struct RoboAI *ai, struct blob *blobs)
+{
+  // 
+}

@@ -74,7 +74,7 @@
 
 // Replace your robot's hex identifier here so the code can talk to it.
 #ifndef HEXKEY
-	#define HEXKEY "00:00:00:00:00:01"	
+	#define HEXKEY "00:16:53:55:D9:FC"	
 #endif
 
 int main(int argc, char **argv)
@@ -95,6 +95,19 @@ int main(int argc, char **argv)
 
   // Start GLUT
   glutInit(&argc, argv);
+
+  // BT_timed_motor_port_start_v2(MOTOR_A, -100, 3000);
+
+  // BT_motor_port_start(MOTOR_D, 55);
+  // while (true) {
+  //   if (BT_read_touch_sensor(PORT_4)) {
+  //     BT_all_stop(1);
+  //     break;
+  //   }
+  // }
+
+  // BT_timed_motor_port_start_v2(MOTOR_A, -100, 3000);
+  // exit(0);
 
   // Launch imageCapture
   if (imageCaptureStartup(argv[1], 1280, 720, atoi(argv[2]), atoi(argv[3]))) {
