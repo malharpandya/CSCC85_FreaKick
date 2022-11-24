@@ -154,11 +154,20 @@ struct displayList *clearDP(struct displayList *head);
 
 // Constants
 #define NUM_EVENTS 20
-#define PID_TIME 100
+#define PID_TIME 10
 
-#define Kp 0.005
-#define Kd 0.01
-#define Ki 0.001
+// #define Kp 0.0005
+#define Kp 0.0001
+#define Kd 0.000005
+#define Ki 0.0000057
+
+
+#define BALL_MOVEMENT_THRESHOLD 10
+
+// #define Kd 0.0000
+// #define Ki 0.0000001
+
+#define CHASE_BALL_THRESHOLD 150
 
 #define STOP_ROTATING_THRESHOLD 0.2 // this is in radians
 
@@ -175,9 +184,9 @@ struct displayList *clearDP(struct displayList *head);
 #define NOT_ALIGNED_WITH_BALL 3
 #define POS_ANGLE 4
 #define NEG_ANGLE 5
+#define BALL_MOVED 6
 
-
-
+void update_cleaned_mx_my(struct RoboAI *ai);
 
 void move_forward(struct RoboAI *ai, struct blob *blobs); 
 void calculate_heading_direction_forward(struct RoboAI *ai, struct blob *blobs);

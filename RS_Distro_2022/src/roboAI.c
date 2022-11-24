@@ -47,6 +47,8 @@ int T[300][NUM_EVENTS];
   double line_c;
 // };
 
+double prev_self_cx, prev_self_cy;
+
 double cleaned_mx;
 double cleaned_my;
 
@@ -650,7 +652,10 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
  T[203][SUCCESS] = 205;
  T[204][SUCCESS] = 205;
  T[205][SUCCESS] = 206;
+ T[205][BALL_MOVED] = 201;
  T[206][SUCCESS] = 207;
+ T[206][BALL_MOVED] = 201;
+ T[207][BALL_MOVED] = 201;
 
  state_functions[101] = move_forward_no_motion_direction;
  state_functions[102] = initialize_penalty_kick;
@@ -860,6 +865,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
   fprintf(stderr,"Just trackin'!\n");	// bot, opponent, and ball.
   track_agents(ai,blobs);		// Currently, does nothing but endlessly track
   (*state_functions[ai->st.state]) (ai, blobs);
+  update_cleaned_mx_my(ai);
 //   if (ai -> st.state == 1) {
 
 //   } else if (ai -> st.state == 101) {
@@ -1029,6 +1035,7 @@ int is_parallel(struct RoboAI *ai, double threshold)
 
 void update_cleaned_mx_my(struct RoboAI *ai)
 {
+  if (!(ai->st.selfID)) {return;}
   double dot = ai->st.self->dx * cleaned_mx + ai->st.self->dy * cleaned_my;
   if (dot > 0)
   {
@@ -1038,11 +1045,16 @@ void update_cleaned_mx_my(struct RoboAI *ai)
     cleaned_mx = -ai->st.self->dx;
     cleaned_my = -ai->st.self->dy;
   }
+  fprintf(stderr,"cleaned mx %f my %f\n", cleaned_mx, cleaned_my);
 }
 
 void move_forward_no_motion_direction(struct RoboAI *ai, struct blob *blobs)
 {
   fprintf(stderr,"state %d move_forward_no_motion_direction\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {
+    BT_all_stop(1);
+    return;
+  }
   // Drive forward
   DRIVE_FORWARD
 
@@ -1061,10 +1073,15 @@ void move_forward_no_motion_direction(struct RoboAI *ai, struct blob *blobs)
 void initiate_rotate_towards_ball(struct RoboAI *ai, struct blob *blobs)
 {
   fprintf(stderr,"state %d initiate_rotate_towards_ball\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {return;}
+  line_x2 = ai->st.ball->cx;
+  line_y2 = ai->st.ball->cy;
   // Assuming we are fully stopped already 
   // rotate towards the ball
+  fprintf(stderr, "ah\n");
   double angleToBall = find_angle(ai,0);
-  if (fabs(angleToBall) < STOP_ROTATING_THRESHOLD)
+  fprintf(stderr, "ahh\n");
+  if (fabs(angleToBall) < STOP_ROTATING_THRESHOLD && angleToBall != 0.0)
   {
     // oritentated towards facing the ball
     // update the state
@@ -1090,6 +1107,10 @@ int vertical_angle(double theta)
 void rotate_towards_ball_cw(struct RoboAI *ai, struct blob *blobs)
 {
   fprintf(stderr,"state %d rotate_towards_ball_cw\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {
+    BT_all_stop(1);
+    return;
+  }
   update_cleaned_mx_my(ai);
   if (vertical_angle(find_angle(ai,2)))
   {
@@ -1104,6 +1125,10 @@ void rotate_towards_ball_cw(struct RoboAI *ai, struct blob *blobs)
 void rotate_towards_ball_ccw(struct RoboAI *ai, struct blob *blobs)
 {
   fprintf(stderr,"state %d rotate_towards_ball_ccw\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {
+    BT_all_stop(1);
+    return;
+  }
   update_cleaned_mx_my(ai);
   if (vertical_angle(find_angle(ai,2)))
   {
@@ -1116,6 +1141,11 @@ void rotate_towards_ball_ccw(struct RoboAI *ai, struct blob *blobs)
   TURN_ON_STOP_CCW
 }
 
+int ball_moved(struct RoboAI *ai)
+{
+  return (fabs(ai->st.ball->cx - line_x2) > BALL_MOVEMENT_THRESHOLD || fabs(ai->st.ball->cy - line_y2)> BALL_MOVEMENT_THRESHOLD);
+}
+
 void initiate_drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
 {
   // set the destination
@@ -1124,14 +1154,24 @@ void initiate_drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
   // implicit equation is ax + by + c = 0
   // given end points (x1, y1) and (x2, y2) -> 0 =(y2 - y1)x - (x2 - x1)y + c
   // c = x2y1 - y2x1
-
+  if (!(ai->st.selfID && ai->st.ballID)) {
+    BT_all_stop(1);
+    return;
+  }
+  fprintf(stderr,"state %d initiate_drive_to_ball_pid\n", ai->st.state);
+  if (ball_moved(ai)) {
+    ai->st.state = T[ai->st.state][BALL_MOVED];
+    return;
+  }
   line_x1 = ai->st.self->cx;
   line_y1 = ai->st.self->cy;
-  line_x2 = ai->st.ball->cx;
-  line_y2 = ai->st.ball->cy;
+
   line_c = line_x2*line_y1 - line_y2*line_x1;
-  left_motor_speed = 100;
-  right_motor_speed = 100;
+  left_motor_speed = 30;
+  right_motor_speed = 30;
+  prev_self_cx = ai->st.self->cx;
+  prev_self_cy = ai->st.self->cy;
+  ai->DPhead = addLine(ai->DPhead, line_x1, line_y1, line_x2, line_y2, 255, 255, 255);
   ai->st.state = T[ai->st.state][SUCCESS];
 }
 
@@ -1153,12 +1193,32 @@ void drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
   we should probably keep driving forward during this step
   */
   fprintf(stderr,"state %d drive_to_ball_pid\n", ai->st.state);
-
+  if (!(ai->st.selfID && ai->st.ballID)) {
+    BT_all_stop(1);
+    return;
+  }
+  if (ball_moved(ai)) {
+    ai->st.state = T[ai->st.state][BALL_MOVED];
+    return;
+  }
+  // ai->DPhead = addLine(ai->DPhead, line_x1, line_y1, line_x2, line_y2, 0, 0, 0);
  // if close enough to ball, transition to next successful state
+  if (sqrt(pow(line_x2 - ai->st.self->cx,2)+pow(line_y2 - ai->st.self->cy,2)) < CHASE_BALL_THRESHOLD)
+  {
+    ai->st.state = T[ai->st.state][SUCCESS];
+    BT_all_stop(1);
+    return;
+  }
 
   // calculate u = e + de + integral e
   double curr_err = eval_implicit_line(ai->st.self->cx, ai->st.self->cy);
-  double delta_err = curr_err - eval_implicit_line(ai->st.old_scx, ai->st.old_scy);
+  double delta_err = curr_err - eval_implicit_line(prev_self_cx, prev_self_cy);
+  
+  fprintf(stderr, "here:%f %f %f %f\n", ai->st.self->cx, ai->st.self->cy,prev_self_cx, prev_self_cy);
+  
+
+  prev_self_cx = ai->st.self->cx;
+  prev_self_cy = ai->st.self->cy;
   double int_err = updateInt(ai, curr_err);
 
   fprintf(stderr, "e: %f de: %f, integral e: %f\n", curr_err, delta_err, int_err);
@@ -1167,11 +1227,13 @@ void drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
   fprintf(stderr, "sx: %d sy: %d\n", sx, sy);
 
   // u = min(5, max(-5, u));
-  double temp = u > -5 ? u : -5;
-  u = 5 > temp ? temp : 5; 
+  left_motor_speed = 75;
+  right_motor_speed = 70;
+  double temp = u > -30 ? u : -30;
+  u = 30 > temp ? temp : 30; 
   left_motor_speed += u;
-  right_motor_speed += u;
-  
+  right_motor_speed -= u;
+  fprintf(stderr, "left_motor_speed: %f right_motor_speed: %f\n", left_motor_speed, right_motor_speed);
   BT_turn(MOTOR_D, left_motor_speed, MOTOR_A, right_motor_speed);
 }
 
@@ -1193,6 +1255,15 @@ void shift_to_rotate_mode_cw(struct RoboAI *ai, struct blob *blobs)
 
 void arrived_at_chase_ball(struct RoboAI *ai, struct blob *blobs)
 {
+  fprintf(stderr,"state %d arrived_at_chase_ball\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {return;}
+  if (sqrt(pow(ai->st.ball->cx - ai->st.self->cx,2)+pow(ai->st.ball->cy - ai->st.self->cy,2)) >= CHASE_BALL_THRESHOLD)
+  {
+    fprintf(stderr, "1\n");
+    ai->st.state = T[ai->st.state][BALL_MOVED];
+    return;
+  }
+  fprintf(stderr, "1\n");
   return;
 }
 
