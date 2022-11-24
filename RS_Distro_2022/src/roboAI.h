@@ -27,7 +27,7 @@
 #include <stdlib.h>
 
 // Change this to match the ports your bots motors are connected to
-#define LEFT_MOTOR MOTOR_B
+#define LEFT_MOTOR MOTOR_D
 #define RIGHT_MOTOR MOTOR_A
 
 #define AI_SOCCER 0 	// Play soccer!
@@ -95,6 +95,7 @@ struct RoboAI {
     struct displayList *DPhead;
 };
 
+
 /**
  * \brief Set up an AI structure for playing roboSoccer
  *
@@ -151,11 +152,32 @@ struct displayList *clearDP(struct displayList *head);
    playing functionality below.
 *****************************************************************************/
 
+// Constants
+#define NUM_EVENTS 20
+#define PID_TIME 100
+
+#define Kp 0.005
+#define Kd 0.01
+#define Ki 0.001
+
+#define STOP_ROTATING_THRESHOLD 0.2 // this is in radians
+
+// Motion Controls
+
+#define DRIVE_FORWARD BT_turn(MOTOR_A, 97, MOTOR_D, 100);
+#define TURN_ON_STOP_CW BT_turn(MOTOR_A, -50, MOTOR_D, 50);
+#define TURN_ON_STOP_CCW BT_turn(MOTOR_A, 50, MOTOR_D, -50);
+
 //Events 
 #define SUCCESS 0 
 #define FAIL 1
 #define RESET 2
 #define NOT_ALIGNED_WITH_BALL 3
+#define POS_ANGLE 4
+#define NEG_ANGLE 5
+
+
+
 
 void move_forward(struct RoboAI *ai, struct blob *blobs); 
 void calculate_heading_direction_forward(struct RoboAI *ai, struct blob *blobs);
@@ -169,4 +191,23 @@ void rotate(struct RoboAI *ai, struct blob *blobs);
 void rotate_180_towards_ball(struct RoboAI *ai, struct blob *blobs);
 void move_towards_ball(struct RoboAI *ai, struct blob *blobs);
 
+
+
+void move_forward_no_motion_direction(struct RoboAI *ai, struct blob *blobs);
+void initiate_rotate_towards_ball(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_ball_ccw(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_ball_cw(struct RoboAI *ai, struct blob *blobs);
+void initiate_drive_to_ball_pid(struct RoboAI *ai, struct blob *blobs);
+void drive_to_ball_pid(struct RoboAI *ai, struct blob *blobs);
+void arrived_at_chase_ball(struct RoboAI *ai, struct blob *blobs);
+
+
+
+void initialize_penalty_kick(struct RoboAI *ai, struct blob *blobs);
+void grab(struct RoboAI *ai, struct blob *blobs);
+double find_angle_to_goal(struct RoboAI *ai);
+void initiate_rotate_towards_goal(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_goal_cw(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_goal_ccw(struct RoboAI *ai, struct blob *blobs);
+void kick(struct RoboAI *ai, struct blob *blobs);
 #endif

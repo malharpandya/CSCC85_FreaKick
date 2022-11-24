@@ -34,7 +34,29 @@ extern int sy;
 int laggy=0;
 
 void (*state_functions[300]) (struct RoboAI *ai, struct blob *blobs);
-int T[300][20];
+int T[300][NUM_EVENTS];
+
+// global variables used for pid
+// u = e + de/dt + integral e dt
+
+
+// struct implicit_line {
+  // 0 = (y2 - y1)x - (x2 - x1)y + c
+  double line_x1, line_y1;
+  double line_x2, line_y2;
+  double line_c;
+// };
+
+double cleaned_mx;
+double cleaned_my;
+
+double left_motor_speed;
+double right_motor_speed;
+
+double pastError[PID_TIME];
+
+double enemy_goal_x;
+double enemy_goal_y;
 
 /**************************************************************
  * Display List Management
@@ -602,15 +624,65 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
  ai->st.ballID=0;
  ai->DPhead=NULL;
 
- state_functions[201] = rotate_towards_ball;
- state_functions[202] = rotate;
- state_functions[203] = move_towards_ball;
+//  state_functions[201] = start_chase_ball;
+//  state_functions[202] = drive_towards_ball;
+//  state_functions[203] = rotate_cw_to_ball;
+//  state_functions[204] = rotate_ccw_to_ball;
+//  state_functions[205] = arrived_at_chase_ball;
+
+ state_functions[201] = move_forward_no_motion_direction;
+ state_functions[202] = initiate_rotate_towards_ball;
+ state_functions[203] = rotate_towards_ball_ccw;
+ state_functions[204] = rotate_towards_ball_cw;
+ state_functions[205] = initiate_drive_to_ball_pid;
+ state_functions[206] = drive_to_ball_pid;
+ state_functions[207] = arrived_at_chase_ball;
+
+//  T[201][SUCCESS] = 202; // found heading direction
+//  T[202][SUCCESS] = 205; // arrived close enough to ball
+//  T[203][]
+//  T[203][NOT_ALIGNED_WITH_BALL] = 201;
 
  T[201][SUCCESS] = 202;
- T[202][SUCCESS] = 203;
- T[203][NOT_ALIGNED_WITH_BALL] = 201;
+ T[202][SUCCESS] = 205;
+ T[202][POS_ANGLE] = 203;
+ T[202][NEG_ANGLE] = 204;
+ T[203][SUCCESS] = 205;
+ T[204][SUCCESS] = 205;
+ T[205][SUCCESS] = 206;
+ T[206][SUCCESS] = 207;
 
+ state_functions[101] = move_forward_no_motion_direction;
+ state_functions[102] = initialize_penalty_kick;
+ state_functions[103] = initiate_rotate_towards_ball;
+ state_functions[104] = rotate_towards_ball_ccw;
+ state_functions[105] = rotate_towards_ball_cw;
+ state_functions[106] = initiate_drive_to_ball_pid;
+ state_functions[107] = drive_to_ball_pid;
+ state_functions[108] = arrived_at_chase_ball;
+ state_functions[109] = grab;
+ state_functions[110] = initiate_rotate_towards_goal;
+ state_functions[111] = rotate_towards_goal_ccw;
+ state_functions[112] = rotate_towards_goal_cw;
+ state_functions[113] = kick;
 
+ T[101][SUCCESS] = 102;
+ T[102][SUCCESS] = 103;
+ T[103][SUCCESS] = 106;
+ T[103][POS_ANGLE] = 104;
+ T[103][NEG_ANGLE] = 105;
+ T[104][SUCCESS] = 106;
+ T[105][SUCCESS] = 106;
+ T[106][SUCCESS] = 107;
+ T[107][SUCCESS] = 108;
+ T[108][SUCCESS] = 109;
+ T[109][SUCCESS] = 110;
+ T[109][FAIL] = 103;
+ T[110][SUCCESS] = 113;
+ T[110][POS_ANGLE] = 111;
+ T[110][NEG_ANGLE] = 112;
+ T[111][SUCCESS] = 113;
+ T[112][SUCCESS] = 113;
  fprintf(stderr,"Initialized!\n");
 
  return(1);
@@ -817,6 +889,74 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
  there.
 **********************************************************************************/
 
+double eval_implicit_line(double x, double y){
+  // drawLine(dp-x1,dp->y1,dp->x2-dp->x1,dp->y2-dp->y1,1,dp->R,dp->G,dp->B,blobIm);
+  return (line_y2-line_y1)*x - (line_x2-line_x1)*y + line_c;
+}
+
+
+// FINDS ANGLE BETWEEN MOTION DIRECTION (mode = 0) OR
+// HEADING DIRECTION (mode = 1) OR cleaned HEADING DIRECTION (mode = 2) AND THE DIRECTION FROM THE ROBOT TO THE BALL
+// returns an angle in radians between (-pi, pi], negative angle means we need to move the robot
+// clockwise, positive angle means we ned to move the robot counterclockwise
+double find_angle(struct RoboAI *ai, int mode)
+{
+  double x, y, cx, cy, vec2ball_x, vec2ball_y;
+  if (mode == 0)
+  {
+    if (ai->st.self == NULL){
+      x = ai->st.smx;
+      y = ai->st.smy;
+      cx = ai->st.old_scx;
+      cy = ai->st.old_scy;   
+    } else {
+      x = ai->st.self->mx;
+      y = ai->st.self->my;
+      cx = ai->st.self->cx;
+      cy = ai->st.self->cy; 
+    }
+  }
+  else if (mode == 1)
+  {
+    if (ai->st.self == NULL){
+      x = ai->st.sdx;
+      y = ai->st.sdy;
+      cx = ai->st.old_scx;
+      cy = ai->st.old_scy;   
+    } else {
+      x = ai->st.self->dx;
+      y = ai->st.self->dy;
+      cx = ai->st.self->cx;
+      cy = ai->st.self->cy; 
+    }
+  }
+  else
+  {
+    x = cleaned_mx;
+    y = cleaned_my;
+    if (ai->st.self == NULL){
+      cx = ai->st.old_scx;
+      cy = ai->st.old_scy;   
+    } else { 
+      cx = ai->st.self->cx;
+      cy = ai->st.self->cy; 
+    }
+  }
+  if (ai->st.ball == NULL)
+  {
+    vec2ball_x = ai->st.old_bcx - cx;
+    vec2ball_y = ai->st.old_bcy - cy;
+  } else {
+    vec2ball_x = ai->st.ball->cx - cx;
+    vec2ball_y = ai->st.ball->cy - cy;
+  }
+  double dot = x*vec2ball_x + y*vec2ball_y;
+  double det = x*vec2ball_y - y*vec2ball_x;
+  double angle = atan2(det, dot);
+  printf("angle: %f\n", angle);
+  return angle;
+}
+
 void move_forward(struct RoboAI *ai, struct blob *blobs)
 {
   // Set back wheels to the middle (shouldn't be an issue)
@@ -860,29 +1000,181 @@ void calculate_heading_direction_backward(struct RoboAI *ai, struct blob *blobs)
   // Update State
 }
 
-void rotate_towards_ball(struct RoboAI *ai, struct blob *blobs)
+// returns 1 if the robot is moving in the direction it is facing
+// return 0 otherwise, assumes the robot is moving
+int is_parallel(struct RoboAI *ai, double threshold)
 {
-  // Find the angle difference between heading direction(might not be accurate) and the vector pointed towards the ball
-  double x = ai->st.ball->cx - ai->st.self->cx;
-  double y = ai->st.ball->cy - ai->st.self->cy;
-  fprintf(stderr, "x: %f\n", x);
-  fprintf(stderr, "y: %f\n", y);
-  fprintf(stderr, "mx:%f\n", (ai->st.self->mx));
-  fprintf(stderr, "top:%f\n", (x*ai->st.self->mx+y*ai->st.self->my));
-  fprintf(stderr, "bot:%f\n", ((sqrt(pow(x,2)+pow(y,2)))*(sqrt(pow(ai->st.self->mx,2) + pow(ai->st.self->my,2)))));
-  // Need to switch to us mx and my from dx and dy
-  double theta = acos((x*ai->st.self->dx+y*ai->st.self->dy) / ((sqrt(pow(x,2)+pow(y,2)))*(sqrt(pow(ai->st.self->dx,2) + pow(ai->st.self->dy,2))))); 
-  fprintf(stderr,"theta %f\n", theta);
-  // Start rotating towards it
-  
-  BT_timed_motor_port_start_v2(MOTOR_D, -55, 1000);
-  sleep(1);
-
-  ai->st.state = T[ai->st.state][SUCCESS];
-  fprintf(stderr, "new state:%d\n", ai->st.state);
-  // If the difference in angle is small enought -> update state
-  // else stay in same state
+  double mx, my, dx, dy;
+  if (ai->st.self == NULL)
+  {
+    mx = ai->st.smx;
+    my = ai->st.smy;
+    dx = ai->st.sdx;
+    dy = ai->st.sdy;
+  } else
+  {
+    mx = ai->st.self->mx;
+    my = ai->st.self->my;
+    dx = ai->st.self->dx;
+    dy = ai->st.self->dy;
+  }
+  // find angle between [mx, my] and [dx, dy]
+  double norm_motion = sqrt(pow(abs(mx), 2)+pow(abs(my), 2));
+  double norm_direction = sqrt(pow(abs(dx), 2)+pow(abs(dy), 2));
+  double dot = mx*dx+my*dy;
+  double angle = acos(dot/(norm_direction*norm_motion));
+  angle = angle < (M_PI-angle) ? angle : (M_PI-angle);
+  return (angle < threshold);
 }
+
+void update_cleaned_mx_my(struct RoboAI *ai)
+{
+  double dot = ai->st.self->dx * cleaned_mx + ai->st.self->dy * cleaned_my;
+  if (dot > 0)
+  {
+    cleaned_mx = ai->st.self->dx;
+    cleaned_my = ai->st.self->dy;
+  } else {
+    cleaned_mx = -ai->st.self->dx;
+    cleaned_my = -ai->st.self->dy;
+  }
+}
+
+void move_forward_no_motion_direction(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d move_forward_no_motion_direction\n", ai->st.state);
+  // Drive forward
+  DRIVE_FORWARD
+
+  if (ai->st.self->mx != 0 && ai->st.self->my != 0)
+  {
+    // has a heading direction
+    fprintf(stderr,"Found heading direction %f %f\n", ai->st.self->mx,ai->st.self->my);
+    cleaned_mx = ai->st.self->mx;
+    cleaned_my = ai->st.self->my;
+    ai->st.state = T[ai->st.state][SUCCESS];
+    BT_all_stop(1);
+    return;
+  }
+}
+
+void initiate_rotate_towards_ball(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d initiate_rotate_towards_ball\n", ai->st.state);
+  // Assuming we are fully stopped already 
+  // rotate towards the ball
+  double angleToBall = find_angle(ai,0);
+  if (fabs(angleToBall) < STOP_ROTATING_THRESHOLD)
+  {
+    // oritentated towards facing the ball
+    // update the state
+    ai->st.state = T[ai->st.state][SUCCESS];
+  } else if (angleToBall < 0)
+  {
+    // Keep turning ccw
+    ai->st.state = T[ai->st.state][POS_ANGLE];
+  } else 
+  {
+    // angleToBall < 0
+    // Keep turing cw
+    ai->st.state = T[ai->st.state][NEG_ANGLE];
+  }
+}
+
+int vertical_angle(double theta)
+{
+  // return (fabs(theta) < STOP_ROTATING_THRESHOLD || PI - fabs(theta) < STOP_ROTATING_THRESHOLD)  ? 1 : 0;
+  return (fabs(theta) < STOP_ROTATING_THRESHOLD)  ? 1 : 0;
+}
+
+void rotate_towards_ball_cw(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d rotate_towards_ball_cw\n", ai->st.state);
+  update_cleaned_mx_my(ai);
+  if (vertical_angle(find_angle(ai,2)))
+  {
+    BT_all_stop(1);
+    ai->st.state = T[ai->st.state][SUCCESS];
+    return;
+  }
+  // Keep rotating CW 
+  TURN_ON_STOP_CW
+}
+
+void rotate_towards_ball_ccw(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d rotate_towards_ball_ccw\n", ai->st.state);
+  update_cleaned_mx_my(ai);
+  if (vertical_angle(find_angle(ai,2)))
+  {
+    // aligned with ball
+    BT_all_stop(1);
+    ai->st.state = T[ai->st.state][SUCCESS];
+    return;
+  }
+  // Keep rotating CCW
+  TURN_ON_STOP_CCW
+}
+
+void initiate_drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
+{
+  // set the destination
+  // set the path equation (implicit equation of a line in this case)
+
+  // implicit equation is ax + by + c = 0
+  // given end points (x1, y1) and (x2, y2) -> 0 =(y2 - y1)x - (x2 - x1)y + c
+  // c = x2y1 - y2x1
+
+  line_x1 = ai->st.self->cx;
+  line_y1 = ai->st.self->cy;
+  line_x2 = ai->st.ball->cx;
+  line_y2 = ai->st.ball->cy;
+  line_c = line_x2*line_y1 - line_y2*line_x1;
+  left_motor_speed = 100;
+  right_motor_speed = 100;
+  ai->st.state = T[ai->st.state][SUCCESS];
+}
+
+double updateInt(struct RoboAI *ai, double curr_err)
+{
+  double sum = 0;
+  for (int k = PID_TIME-1; k>0; k--)
+  {
+    pastError[k] = pastError[k-1];
+    sum += pastError[k];
+  }
+  pastError[0] = curr_err;
+  return sum;
+}
+
+void drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
+{
+  /*
+  we should probably keep driving forward during this step
+  */
+  fprintf(stderr,"state %d drive_to_ball_pid\n", ai->st.state);
+
+ // if close enough to ball, transition to next successful state
+
+  // calculate u = e + de + integral e
+  double curr_err = eval_implicit_line(ai->st.self->cx, ai->st.self->cy);
+  double delta_err = curr_err - eval_implicit_line(ai->st.old_scx, ai->st.old_scy);
+  double int_err = updateInt(ai, curr_err);
+
+  fprintf(stderr, "e: %f de: %f, integral e: %f\n", curr_err, delta_err, int_err);
+  double u = Kp * curr_err + Kd * delta_err + Ki * int_err;
+  fprintf(stderr, "pid result u: %f", u);
+  fprintf(stderr, "sx: %d sy: %d\n", sx, sy);
+
+  // u = min(5, max(-5, u));
+  double temp = u > -5 ? u : -5;
+  u = 5 > temp ? temp : 5; 
+  left_motor_speed += u;
+  right_motor_speed += u;
+  
+  BT_turn(MOTOR_D, left_motor_speed, MOTOR_A, right_motor_speed);
+}
+
 
 //probably turn this into helper function, since this is too general for it to be a state
 void shift_to_rotate_mode_ccw(struct RoboAI *ai, struct blob *blobs)
@@ -897,6 +1189,11 @@ void shift_to_rotate_mode_cw(struct RoboAI *ai, struct blob *blobs)
   BT_motor_port_start(MOTOR_D, 55);
   sleep(1);
   ai->st.state = T[ai->st.state][SUCCESS];
+}
+
+void arrived_at_chase_ball(struct RoboAI *ai, struct blob *blobs)
+{
+  return;
 }
 
 void rotate(struct RoboAI *ai, struct blob *blobs)
@@ -955,7 +1252,7 @@ void rotate_180_towards_ball(struct RoboAI *ai, struct blob *blobs)
   // sleep
   // same steps are rotate_towards_ball, except rotation direction is alread decided
   // double theta = acos(dot(v,w) / ((sqrt(vpow(x,2)+vpow(y,2)))*(sqrt(wpow(x,2) + wpow(y,2)))));
-  // fprintf("theta angle towards ball %f", theta);
+  // fprintf(stderr,"theta angle towards ball %f", theta);
   // if (theta < 0.3)
   // {
     
@@ -987,7 +1284,114 @@ void move_towards_ball(struct RoboAI *ai, struct blob *blobs)
   }
   BT_timed_motor_port_start_v2(MOTOR_A, -100, 3000);
 }
-void penalty_kick(struct RoboAI *ai, struct blob *blobs)
+
+void initialize_penalty_kick(struct RoboAI *ai, struct blob *blobs){
+  // Populate enemy goal x and y based on inputted own goal flag
+  enemy_goal_x = (ai -> st.side) * sx;
+  enemy_goal_y = (double) sy / 2;
+  ai->st.state = T[ai->st.state][SUCCESS];
+}
+
+void grab(struct RoboAI *ai, struct blob *blobs){
+  // Assume arms are already open and just grab (NOTE: MAKE SURE ARMS ARE OPEN ALWAYS UNLESS GRAB IS CALLED)
+  BT_motor_port_start(MOTOR_B, -100);
+  sleep(0.5);
+  BT_all_stop(1);
+
+  // Initialize direction vector and norm from bot to ball
+  double robotBallDiffX = ai -> st.ball->cx - ai -> st.self->cx;
+  double robotBallDiffY = ai -> st.ball->cy - ai -> st.self->cy;
+  double robotBallDiffNorm = sqrt(pow(robotBallDiffX, 2) + pow(robotBallDiffY, 2));
+
+  // Use find_angle() in mode 2 to check if the ball in in front of the robot and check if the distance (norm) is less than a threshold
+  if (abs(find_angle(ai, 2)) < 0.174533 && robotBallDiffNorm < 38) { // 38 is a magic number from dividing 1280 pixels by 115 cm and angle is 10 deg in radians
+    ai->st.state = T[ai->st.state][SUCCESS];
+  } else {
+    ai->st.state = T[ai->st.state][FAIL];
+  }
+}
+
+double find_angle_to_goal(struct RoboAI *ai)
 {
-  // 
+  double cx, cy;
+  if (ai->st.self == NULL)
+  {
+    cx = ai->st.old_scx;
+    cy = ai->st.old_scy;
+  }
+  else 
+  {
+    cx = ai->st.self->cx;
+    cy = ai->st.self->cy;
+  }
+  double vec2goal_x = enemy_goal_x - cx;
+  double vec2goal_y = enemy_goal_y - cy;
+  double dot = cleaned_mx*vec2goal_x + cleaned_my*vec2goal_y;
+  double det = cleaned_mx*vec2goal_y - cleaned_my*vec2goal_x;
+  double angle = atan2(det, dot);
+  return angle;
+}
+
+void initiate_rotate_towards_goal(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d initiate_rotate_towards_goal\n", ai->st.state);
+  // Assuming we are fully stopped already 
+  // rotate towards the ball
+  double angleToGoal = find_angle_to_goal(ai);
+  if (fabs(angleToGoal) < STOP_ROTATING_THRESHOLD)
+  {
+    // oritentated towards facing the ball
+    // update the state
+    ai->st.state = T[ai->st.state][SUCCESS];
+  } else if (angleToGoal < 0)
+  {
+    // Keep turning ccw
+    ai->st.state = T[ai->st.state][POS_ANGLE];
+  } else 
+  {
+    // angleToBall < 0
+    // Keep turing cw
+    ai->st.state = T[ai->st.state][NEG_ANGLE];
+  }
+}
+
+void rotate_towards_goal_cw(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d rotate_towards_goal_cw\n", ai->st.state);
+  update_cleaned_mx_my(ai);
+  if (vertical_angle(find_angle_to_goal(ai)))
+  {
+    BT_all_stop(1);
+    ai->st.state = T[ai->st.state][SUCCESS];
+    return;
+  }
+  // Keep rotating CW 
+  TURN_ON_STOP_CW
+}
+
+void rotate_towards_goal_ccw(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d rotate_towards_goal_ccw\n", ai->st.state);
+  update_cleaned_mx_my(ai);
+  if (vertical_angle(find_angle_to_goal(ai)))
+  {
+    // aligned with ball
+    BT_all_stop(1);
+    ai->st.state = T[ai->st.state][SUCCESS];
+    return;
+  }
+  // Keep rotating CCW
+  TURN_ON_STOP_CCW
+}
+
+void kick(struct RoboAI *ai, struct blob *blobs){
+  // Assume ball is grabbed and robot is aligned
+  // drive forward for some time
+  DRIVE_FORWARD;
+  sleep(1);
+  // release the ball ASAP
+  BT_motor_port_start(MOTOR_B, 100);
+  sleep(1);
+  // stop moving
+  BT_all_stop(1);
 }
