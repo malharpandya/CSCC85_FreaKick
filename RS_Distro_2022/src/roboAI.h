@@ -156,20 +156,25 @@ struct displayList *clearDP(struct displayList *head);
 #define NUM_EVENTS 20
 #define PID_TIME 10
 
-// #define Kp 0.0005
+// These work with 75 70 and 30 range
+// #define Kp 0.0001
+// #define Kd 0.000005
+// #define Ki 0.0000057
 #define Kp 0.0001
 #define Kd 0.000005
 #define Ki 0.0000057
 
+// #define update_mx_my_threshold 10
+#define UPDATE_MX_MY_THRESHOLD 0.2
 
-#define BALL_MOVEMENT_THRESHOLD 10
+#define BALL_MOVEMENT_THRESHOLD 20
 
 // #define Kd 0.0000
 // #define Ki 0.0000001
 
 #define CHASE_BALL_THRESHOLD 150
 
-#define STOP_ROTATING_THRESHOLD 0.2 // this is in radians
+#define STOP_ROTATING_THRESHOLD 0.2// this is in radians
 
 // Motion Controls
 
@@ -185,6 +190,8 @@ struct displayList *clearDP(struct displayList *head);
 #define POS_ANGLE 4
 #define NEG_ANGLE 5
 #define BALL_MOVED 6
+#define DEFENSE 7
+#define TACKLE 8
 
 void update_cleaned_mx_my(struct RoboAI *ai);
 
@@ -213,10 +220,22 @@ void arrived_at_chase_ball(struct RoboAI *ai, struct blob *blobs);
 
 
 void initialize_penalty_kick(struct RoboAI *ai, struct blob *blobs);
+void arrived_at_ball(struct RoboAI *ai, struct blob *blobs);
 void grab(struct RoboAI *ai, struct blob *blobs);
 double find_angle_to_goal(struct RoboAI *ai);
 void initiate_rotate_towards_goal(struct RoboAI *ai, struct blob *blobs);
 void rotate_towards_goal_cw(struct RoboAI *ai, struct blob *blobs);
 void rotate_towards_goal_ccw(struct RoboAI *ai, struct blob *blobs);
 void kick(struct RoboAI *ai, struct blob *blobs);
+
+void initialize_soccer(struct RoboAI *ai, struct blob *blobs);
+void strategy_check(struct RoboAI *ai, struct blob *blobs);
+void initialize_defense(struct RoboAI *ai, struct blob *blobs);
+void move_to_intercept(struct RoboAI *ai, struct blob *blobs);
+void slow_advance(struct RoboAI *ai, struct blob *blobs);
+void clear_shot_check(struct RoboAI *ai, struct blob *blobs);
+void initiate_dribble(struct RoboAI *ai, struct blob *blobs);
+void dribble_kick(struct RoboAI *ai, struct blob *blobs);
+void initialize_tackle(struct RoboAI *ai, struct blob *blobs);
+void collision_detection(struct RoboAi *ai, struct blob *blobs);
 #endif

@@ -33,6 +33,9 @@ extern int sx;              // Get access to the image size from the imageCaptur
 extern int sy;
 int laggy=0;
 
+int playRoboSoccer = 1;
+int defend = 1;
+
 void (*state_functions[300]) (struct RoboAI *ai, struct blob *blobs);
 int T[300][NUM_EVENTS];
 
@@ -59,6 +62,8 @@ double pastError[PID_TIME];
 
 double enemy_goal_x;
 double enemy_goal_y;
+double own_goal_x;
+double own_goal_y;
 
 /**************************************************************
  * Display List Management
@@ -664,7 +669,7 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
  state_functions[105] = rotate_towards_ball_cw;
  state_functions[106] = initiate_drive_to_ball_pid;
  state_functions[107] = drive_to_ball_pid;
- state_functions[108] = arrived_at_chase_ball;
+ state_functions[108] = arrived_at_ball;
  state_functions[109] = grab;
  state_functions[110] = initiate_rotate_towards_goal;
  state_functions[111] = rotate_towards_goal_ccw;
@@ -679,8 +684,11 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
  T[104][SUCCESS] = 106;
  T[105][SUCCESS] = 106;
  T[106][SUCCESS] = 107;
+ T[106][BALL_MOVED] = 103;
  T[107][SUCCESS] = 108;
+ T[107][BALL_MOVED] = 103;
  T[108][SUCCESS] = 109;
+ T[108][BALL_MOVED] = 103;
  T[109][SUCCESS] = 110;
  T[109][FAIL] = 103;
  T[110][SUCCESS] = 113;
@@ -688,6 +696,66 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
  T[110][NEG_ANGLE] = 112;
  T[111][SUCCESS] = 113;
  T[112][SUCCESS] = 113;
+
+ state_functions[1] = initialize_soccer;
+ state_functions[2] = strategy_check; // "Parent FSM"
+ state_functions[3] = initialize_defense; // Defense mode start
+ state_functions[4] = move_to_intercept;
+ state_functions[5] = slow_advance;
+ state_functions[6] = clear_shot_check; // Offense mode start
+ state_functions[7] = kick;
+ state_functions[8] = initiate_dribble;
+ state_functions[9] = dribble_kick;
+ state_functions[10] = initiate_rotate_towards_ball; // Chase start
+ state_functions[11] = rotate_towards_ball_ccw;
+ state_functions[12] = rotate_towards_ball_cw;
+ state_functions[13] = initiate_drive_to_ball_pid;
+ state_functions[14] = drive_to_ball_pid;
+ state_functions[15] = arrived_at_chase_ball;
+ state_functions[19] = move_forward_no_motion_direction; // Chase end
+ state_functions[16] = initialize_tackle; // Tackle start
+ state_functions[17] = grab;
+ state_functions[18] = collision_detection;
+
+ T[1][SUCCESS] = 2; // Choose strategy
+
+ T[2][DEFENSE] = 3; // Defense start
+ T[3][SUCCESS] = 4;
+ T[4][SUCCESS] = 5;
+ T[5][FAIL] = 4;
+ T[5][SUCCESS] = 2; // Defense end
+
+ T[2][TACKLE] = 16; // Tackle start
+ T[10][SUCCESS] = 13; // Chase start
+ T[10][POS_ANGLE] = 11;
+ T[10][NEG_ANGLE] = 12;
+ T[11][SUCCESS] = 13;
+ T[12][SUCCESS] = 13;
+ T[13][SUCCESS] = 14;
+ T[13][BALL_MOVED] = 19;
+ T[14][SUCCESS] = 15;
+ T[14][BALL_MOVED] = 19;
+ T[15][BALL_MOVED] = 19; // Chase end
+ T[15][SUCCESS] = 17; 
+ T[17][FAIL] = 2; // Tackle end
+
+ T[17][SUCCESS] = 6; // Offense start
+ T[6][SUCCESS] = 7;
+ T[7][SUCCESS] = 2;
+ T[6][FAIL] = 8;
+ T[8][SUCCESS] = 9;
+ T[9][SUCCESS] = 13; // Chase start
+ T[10][POS_ANGLE] = 11;
+ T[10][NEG_ANGLE] = 12;
+ T[11][SUCCESS] = 13;
+ T[12][SUCCESS] = 13;
+ T[13][SUCCESS] = 14;
+ T[13][BALL_MOVED] = 19;
+ T[14][SUCCESS] = 15;
+ T[14][BALL_MOVED] = 19;
+ T[15][BALL_MOVED] = 19; // Chase end
+ T[15][SUCCESS] = 6; // Offense end
+
  fprintf(stderr,"Initialized!\n");
 
  return(1);
@@ -866,6 +934,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
   track_agents(ai,blobs);		// Currently, does nothing but endlessly track
   (*state_functions[ai->st.state]) (ai, blobs);
   update_cleaned_mx_my(ai);
+  // ai->DPhead = addVector(ai->DPhead, ai->st.self->cx, ai->st.self->cy, cleaned_mx, cleaned_my, 40, 255,0,0);
 //   if (ai -> st.state == 1) {
 
 //   } else if (ai -> st.state == 101) {
@@ -1037,6 +1106,10 @@ void update_cleaned_mx_my(struct RoboAI *ai)
 {
   if (!(ai->st.selfID)) {return;}
   double dot = ai->st.self->dx * cleaned_mx + ai->st.self->dy * cleaned_my;
+  double det = ai->st.self->dx*cleaned_my - cleaned_mx*ai->st.self->dy;
+  double angle = atan2(det, dot);
+
+  if (fabs(dot)<UPDATE_MX_MY_THRESHOLD) {return;}
   if (dot > 0)
   {
     cleaned_mx = ai->st.self->dx;
@@ -1078,9 +1151,7 @@ void initiate_rotate_towards_ball(struct RoboAI *ai, struct blob *blobs)
   line_y2 = ai->st.ball->cy;
   // Assuming we are fully stopped already 
   // rotate towards the ball
-  fprintf(stderr, "ah\n");
-  double angleToBall = find_angle(ai,0);
-  fprintf(stderr, "ahh\n");
+  double angleToBall = find_angle(ai,2);
   if (fabs(angleToBall) < STOP_ROTATING_THRESHOLD && angleToBall != 0.0)
   {
     // oritentated towards facing the ball
@@ -1197,10 +1268,15 @@ void drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
     BT_all_stop(1);
     return;
   }
-  if (ball_moved(ai)) {
+
+  // Confirm we are going the right direction 
+  fprintf(stderr, "help %f\n",fabs(find_angle(ai,1)));
+  if (ball_moved(ai) || fabs(find_angle(ai,0)) > PI/2) {
     ai->st.state = T[ai->st.state][BALL_MOVED];
     return;
   }
+
+
   // ai->DPhead = addLine(ai->DPhead, line_x1, line_y1, line_x2, line_y2, 0, 0, 0);
  // if close enough to ball, transition to next successful state
   if (sqrt(pow(line_x2 - ai->st.self->cx,2)+pow(line_y2 - ai->st.self->cy,2)) < CHASE_BALL_THRESHOLD)
@@ -1209,6 +1285,13 @@ void drive_to_ball_pid(struct RoboAI *ai, struct blob *blob)
     BT_all_stop(1);
     return;
   }
+
+  if (playRoboSoccer && sqrt(pow(ai->st.opp->cx - ai->st.self->cx,2)+pow(ai->st.opp->cy - ai->st.self->cy,2)) < 500)
+  {
+    return;
+  }
+
+
 
   // calculate u = e + de + integral e
   double curr_err = eval_implicit_line(ai->st.self->cx, ai->st.self->cy);
@@ -1259,12 +1342,21 @@ void arrived_at_chase_ball(struct RoboAI *ai, struct blob *blobs)
   if (!(ai->st.selfID && ai->st.ballID)) {return;}
   if (sqrt(pow(ai->st.ball->cx - ai->st.self->cx,2)+pow(ai->st.ball->cy - ai->st.self->cy,2)) >= CHASE_BALL_THRESHOLD)
   {
-    fprintf(stderr, "1\n");
+    ai->st.state = T[ai->st.state][BALL_MOVED];
+  }
+}
+
+void arrived_at_ball(struct RoboAI *ai, struct blob *blobs)
+{
+  fprintf(stderr,"state %d arrived_at_ball\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {return;}
+
+  if (sqrt(pow(ai->st.ball->cx - ai->st.self->cx,2)+pow(ai->st.ball->cy - ai->st.self->cy,2)) >= CHASE_BALL_THRESHOLD)
+  {
     ai->st.state = T[ai->st.state][BALL_MOVED];
     return;
   }
-  fprintf(stderr, "1\n");
-  return;
+  ai->st.state = T[ai->st.state][SUCCESS];
 }
 
 void rotate(struct RoboAI *ai, struct blob *blobs)
@@ -1356,17 +1448,33 @@ void move_towards_ball(struct RoboAI *ai, struct blob *blobs)
   BT_timed_motor_port_start_v2(MOTOR_A, -100, 3000);
 }
 
+////////////////////////////////////////////////////////////////////////////////////
+// PENALTY LOGIC
+////////////////////////////////////////////////////////////////////////////////////
+
 void initialize_penalty_kick(struct RoboAI *ai, struct blob *blobs){
   // Populate enemy goal x and y based on inputted own goal flag
   enemy_goal_x = (ai -> st.side) * sx;
+  if (enemy_goal_x == 0)
+  {
+    enemy_goal_x = sx;
+  } else {
+    enemy_goal_x = 0;
+  }
+  
   enemy_goal_y = (double) sy / 2;
+  BT_motor_port_start(MOTOR_B, 100);
+  sleep(2);
+  BT_all_stop(1);
   ai->st.state = T[ai->st.state][SUCCESS];
 }
 
 void grab(struct RoboAI *ai, struct blob *blobs){
   // Assume arms are already open and just grab (NOTE: MAKE SURE ARMS ARE OPEN ALWAYS UNLESS GRAB IS CALLED)
+  fprintf(stderr,"state %d grab\n\n\n\n\n\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {return;}
   BT_motor_port_start(MOTOR_B, -100);
-  sleep(0.5);
+  sleep(2);
   BT_all_stop(1);
 
   // Initialize direction vector and norm from bot to ball
@@ -1375,11 +1483,12 @@ void grab(struct RoboAI *ai, struct blob *blobs){
   double robotBallDiffNorm = sqrt(pow(robotBallDiffX, 2) + pow(robotBallDiffY, 2));
 
   // Use find_angle() in mode 2 to check if the ball in in front of the robot and check if the distance (norm) is less than a threshold
-  if (abs(find_angle(ai, 2)) < 0.174533 && robotBallDiffNorm < 38) { // 38 is a magic number from dividing 1280 pixels by 115 cm and angle is 10 deg in radians
+  fprintf(stderr, "angle: %f robotBallDiffNorm %f\n", fabs(find_angle(ai, 2)), robotBallDiffNorm);
+  // if (fabs(find_angle(ai, 2)) < 0.174533 && robotBallDiffNorm < 25) { // 38 is a magic number from dividing 1280 pixels by 115 cm and angle is 10 deg in radians
     ai->st.state = T[ai->st.state][SUCCESS];
-  } else {
-    ai->st.state = T[ai->st.state][FAIL];
-  }
+  // } else {
+  //   ai->st.state = T[ai->st.state][FAIL];
+  // }
 }
 
 double find_angle_to_goal(struct RoboAI *ai)
@@ -1456,13 +1565,110 @@ void rotate_towards_goal_ccw(struct RoboAI *ai, struct blob *blobs)
 }
 
 void kick(struct RoboAI *ai, struct blob *blobs){
+  fprintf(stderr,"state %d kick\n", ai->st.state);
   // Assume ball is grabbed and robot is aligned
   // drive forward for some time
-  DRIVE_FORWARD;
+  BT_turn(MOTOR_D, 100, MOTOR_A, 100);
   sleep(1);
+  
+  // BT_timed_motor_port_start(MOTOR_D, 100,0,2000,0);
+  // BT_timed_motor_port_start(MOTOR_A, 80,0,2000,0);
+
   // release the ball ASAP
   BT_motor_port_start(MOTOR_B, 100);
+  sleep(0.5);
+  BT_motor_port_stop(MOTOR_A, 0);
   sleep(1);
+
   // stop moving
   BT_all_stop(1);
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+// PLAY SOCCER LOGIC
+////////////////////////////////////////////////////////////////////////////////////
+
+void initialize_soccer(struct RoboAI *ai, struct blob *blobs)
+{
+  // Set enemy and own goal coords, robot facing dir, etc.
+  enemy_goal_x = (ai -> st.side) * sx;
+  enemy_goal_y = (double) sy / 2;
+  BT_motor_port_start(MOTOR_B, 100);
+  sleep(2);
+  BT_all_stop(1);
+
+  fprintf(stderr,"state %d move_forward_no_motion_direction\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID)) {
+    return;
+  }
+  // Drive forward
+  DRIVE_FORWARD
+
+  if (ai->st.self->mx != 0 && ai->st.self->my != 0)
+  {
+    // has a heading direction
+    fprintf(stderr,"Found heading direction %f %f\n", ai->st.self->mx,ai->st.self->my);
+    cleaned_mx = ai->st.self->mx;
+    cleaned_my = ai->st.self->my;
+    ai->st.state = T[ai->st.state][SUCCESS];
+    BT_all_stop(1);
+    return;
+  }
+}
+
+void strategy_check(struct RoboAI *ai, struct blob *blobs)
+{
+  // If ball is closer to enemy than us, defend, else tackle
+  double robotBallDiffX = ai -> st.ball->cx - ai -> st.self->cx;
+  double robotBallDiffY = ai -> st.ball->cy - ai -> st.self->cy;
+  double robotBallDiffNorm = sqrt(pow(robotBallDiffX, 2) + pow(robotBallDiffY, 2));
+
+  double oppBallDiffX = ai -> st.ball->cx - ai -> st.opp->cx;
+  double oppBallDiffY = ai -> st.ball->cy - ai -> st.opp->cy;
+  double oppBallDiffNorm = sqrt(pow(oppBallDiffX, 2) + pow(oppBallDiffY, 2));
+
+  // if (robotBallDiffNorm < oppBallDiffNorm) {
+  //   ai->st.state = T[ai->st.state][OFFENSE];
+  // } else {
+  //   ai->st.state = T[ai->st.state][TACKLE];
+  // }
+}
+
+void initialize_defense(struct RoboAI *ai, struct blob *blobs)
+{
+  
+}
+
+void move_to_intercept(struct RoboAI *ai, struct blob *blobs)
+{
+  
+}
+
+void slow_advance(struct RoboAI *ai, struct blob *blobs)
+{
+  ai->st.state = T[ai->st.state][SUCCESS];
+}
+
+void clear_shot_check(struct RoboAI *ai, struct blob *blobs)
+{
+  ai->st.state = T[ai->st.state][SUCCESS];
+}
+
+void initiate_dribble(struct RoboAI *ai, struct blob *blobs)
+{
+  
+}
+
+void dribble_kick(struct RoboAI *ai, struct blob *blobs)
+{
+  
+}
+
+void initialize_tackle(struct RoboAI *ai, struct blob *blobs)
+{
+
+}
+
+void collision_detection(struct RoboAi *ai, struct blob *blobs) {
+
 }
