@@ -67,9 +67,6 @@ double target_x, target_y;
 
 // double prev_self_cx, prev_self_cy;
 
-double cleaned_mx;
-double cleaned_my;
-
 // double left_motor_speed;
 // double right_motor_speed;
 
@@ -969,7 +966,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
   fprintf(stderr,"Just trackin'!\n");	// bot, opponent, and ball.
   track_agents(ai,blobs);		// Currently, does nothing but endlessly track
   (*state_functions[ai->st.state]) (ai, blobs);
-  update_cleaned_mx_my(ai);
+  update_global(ai);
   // ai->DPhead = addVector(ai->DPhead, ai->st.self->cx, ai->st.self->cy, cleaned_mx, cleaned_my, 40, 255,0,0);
 //   if (ai -> st.state == 1) {
 
@@ -1027,7 +1024,7 @@ void set_global(struct RoboAI *ai, struct blob *blob)
   BT_turn(MOTOR_A, -20, MOTOR_B, -20);
   sleep(0.5); //TUNE
   // now we have a motion direction to compare with
-  double mx, my, dx, dy, self_x, self_y;
+  double mx, my, dx, dy;
   if (ai->st.self != NULL)
   {
     mx = ai->st.self->mx;
@@ -1067,7 +1064,58 @@ double norm(double x, double y)
 }
 void update_global(struct RoboAI *ai)
 {
+  // ned to update sanitized_dx, sanitized_dy, ball_x, ball_y
+  double mx, my, dx, dy;
+  if (ai->st.self != NULL)
+  {
+    mx = ai->st.self->mx;
+    my = ai->st.self->my;
+    dx = ai->st.self->dx;
+    dy = ai->st.self->dy;
+    self_x = ai->st.self->cx;
+    self_y = ai->st.self->cy;
+  } 
+  else {
+    mx = ai->st.smx;
+    my = ai->st.smy;
+    dx = ai->st.sdx;
+    dy = ai->st.sdy;
+    self_x = ai->st.old_scx;
+    self_y = ai->st.old_scy;
+  }
+  if (ai->st.ball != NULL)
+  {
+    ball_x = ai->st.ball->cx;
+    ball_y = ai->st.ball->cy;
+  } 
+  else {
+    ball_x = ai->st.old_bcx;
+    ball_y = ai->st.old_bcy;
+  }
+  // check dx dy value
+  if (abs(find_angle(sanitized_dx, sanitized_dy, dx, dy)) < 1.5)
+  {
+    sanitized_dx = dx;
+    sanitized_dy = dy;
+  }
+  else
+  {
+    sanitized_dx = -dx;
+    sanitized_dy = -dy;
+  }
+}
 
+// left  = 0, right  = 1
+void turn(int direction)
+{
+  if (direction)
+  {
+    BT_turn(MOTOR_A, -20, MOTOR_D, 20);
+  }
+  else
+  {
+    BT_turn(MOTOR_A, 20, MOTOR_D, -20);
+  }
 }
 ///////////////////////////////////////
 // CHASE LOGIC
@@ -1125,42 +1173,60 @@ void get_to_target(struct RoboAI *ai, struct blob *blob)
     BT_all_stop(1);
     ai->st.state = T[ai->st.state][BALL_MOVED];
   }
-  if (has_reached_target(ai))
+  else if (has_reached_target(ai))
   {
     BT_all_stop(1);
     ai->st.state = T[ai->st.state][SUCCESS];
   }
-  
-  double vect2tgt_x = target_x - ai->st.self->cx;
-  double vect2tgt_y = target_y - ai->st.self->cy;
+  else
+  {
 
-  vect2tgt_x /= norm(vect2tgt_x, vect2tgt_y);
-  vect2tgt_y /= norm(vect2tgt_x, vect2tgt_y); 
+    // for now assume we arent going to be set in a way that we collide with the ball
+    // on our way to the target
+    // but if we have time, change this so that it checks whether ball is within kick_distance
+    // and change vector to target to be tangential to the direction to ball so you
+    // drive along the circumference until you are clear to move forward
+    double vect2tgt_x = target_x - ai->st.self->cx;
+    double vect2tgt_y = target_y - ai->st.self->cy;
+
+    vect2tgt_x /= norm(vect2tgt_x, vect2tgt_y);
+    vect2tgt_y /= norm(vect2tgt_x, vect2tgt_y); 
   
-  double err = find_angle(cleaned_mx, cleaned_my, vect2tgt_x, vect2tgt_y);
+    double err = find_angle(sanitized_dx, sanitized_dy, vect2tgt_x, vect2tgt_y);
+    // if error too big, stop moving and align yourself so that error is manageable
+    if (abs(err) >= 0.4)
+    {
+      // err < 0 means we need to turn right
+      turn((err<0));
+    }
+    else
+    {
+      // PID here
+      // also only use the P, we dont need the I or D
+      continue;
+    }
+  }
   
 }
 
 void face_ball(struct RoboAI *ai, struct blob *blob)
 {
-  
-  double angle = find_angle(ball_x-self_x, ball_y-self_x, sanitized_dx, sanitized_dy);
-  if (abs(find_angle()) < 0.1){
-
+  if (is_ball_moving())
+  {
+    ai->st.state = T[ai->st.state][BALL_MOVED]
+  } else {
+    double angle = find_angle(sanitized_dx, sanitized_dy, ball_x-self_x, ball_y-self_y);
+    if (abs(find_angle()) < 0.1)
+    {
+    ai->st.state = T[ai->st.state][SUCCESS]
+    }
+    else
+    {
+      // need to turn in place according to angle, stay in the same state
+      turn((angle<0));
+    }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 // double eval_implicit_line(double x, double y){
 //   // drawLine(dp-x1,dp->y1,dp->x2-dp->x1,dp->y2-dp->y1,1,dp->R,dp->G,dp->B,blobIm);
@@ -1172,50 +1238,6 @@ void face_ball(struct RoboAI *ai, struct blob *blob)
 // HEADING DIRECTION (mode = 1) OR cleaned HEADING DIRECTION (mode = 2) AND THE DIRECTION FROM THE ROBOT TO THE BALL
 // returns an angle in radians between (-pi, pi], negative angle means we need to move the robot
 // clockwise, positive angle means we ned to move the robot counterclockwise
-
-double find_angle_cleaned(double cx, double cy);
-{
-  // want to find the 360 deg angle where 0 is cleaned  heading direction and [-pi, pi]
-  // returns an angle in radians between (-pi, pi] negative angle means we need to move the robot
-  // clockwise, positive angle means we ned to move the robot counterclockwise
-
-  double x, y, vec2ball_x, vec2ball_y;
-
-  // x = cleaned_mx;
-  // y = cleaned_my; 
-  // cx = (ai->st.self) ? ai->st.self->cx: ai->st.old_scx;
-  // cy = (ai->st.self) ? ai->st.self->cy: ai->st.old_scy;
-  // vec2ball_x = ((ai->st.ball) ? ai->st.ball->cx : ai->st.old_bcx) - cx;
-  // vec2ball_y = ((ai->st.ball) ? ai->st.ball->cy : ai->st.old_bcy) - cy;
-
-  x = (ai->st.self) ? ai->st.self->cx: ai->st.old_scx;
-  y = (ai->st.self) ? ai->st.self->cy: ai->st.old_scy;
-    
-  double dot = cleaned_mx*(cx - x) + cleaned_y*(cy - y);
-  double det = cleaned_mx*(cy - y) - cleaned_y*(cx - x);
-  double angle = atan2(det, dot);
-  printf("angle: %f\n", angle);
-  return angle;
-
-}
-
-void update_cleaned_mx_my(struct RoboAI *ai)
-{
-  // magnitude of dot product is close to 1 is parrellel 
-  // > 0 means in [-PI/2, PI/2] around cleaned mx my
-  if (!*(ai->st.selfID)) {return;}
-  double dot = ai->st.self->dx * cleaned_mx + ai->st.self->dy * cleaned_my;
-  if (fabs(dot < 0.80)) {
-    fprintf(stderr, "dirty direction vector\n\n\n\n\n");
-    return;
-  }
-
-  if (dot > 0){
-
-  }
-  cleaned_mx = (dot > 0) ? ai->st.self->dx : -ai->st.self->dx;
-  cleaned_my = (dot > 0) ? ai->st.self->dy : -ai->st.self->dy;
-}
 
 
 // void get_to_target_pid(struct RoboAI *ai, struct blob *blob)
@@ -1524,7 +1546,6 @@ void update_cleaned_mx_my(struct RoboAI *ai)
   
 //   fprintf(stderr, "here:%f %f %f %f\n", ai->st.self->cx, ai->st.self->cy,prev_self_cx, prev_self_cy);
   
-
 //   prev_self_cx = ai->st.self->cx;
 //   prev_self_cy = ai->st.self->cy;
 //   double int_err = updateInt(ai, curr_err);
