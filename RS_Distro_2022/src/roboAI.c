@@ -53,8 +53,14 @@ double self_x, self_y;
 double enemy_goal_x, enemy_goal_y;
 // GLOBAL TARGET VARIABLE
 double target_x, target_y;
-// void (*state_functions[300]) (struct RoboAI *ai, struct blob *blobs);
-// int T[300][NUM_EVENTS];
+void (*state_functions[300]) (struct RoboAI *ai, struct blob *blobs);
+int T[300][NUM_EVENTS];
+int timeout_counter; 
+// MOTOR SPEED
+int left_motor_speed;
+int right_motor_speed;
+
+struct displayList *tempDPhead;
 
 // global variables used for pid
 // u = e + de/dt + integral e dt
@@ -70,7 +76,7 @@ double target_x, target_y;
 // double left_motor_speed;
 // double right_motor_speed;
 
-// double pastError[PID_TIME];
+double pastError[PID_TIME];
 
 // double enemy_goal_x;
 // double enemy_goal_y;
@@ -544,7 +550,7 @@ void id_bot(struct RoboAI *ai, struct blob *blobs)
  
  track_agents(ai,blobs);		// Call the tracking function to find each agent
 
- BT_drive(LEFT_MOTOR, RIGHT_MOTOR, 30);			// Start forward motion to establish heading
+ BT_drive(LEFT_MOTOR, RIGHT_MOTOR, -30);			// Start forward motion to establish heading
                                                 // Will move for a few frames.
   
  if (ai->st.selfID==1&&ai->st.self!=NULL)
@@ -646,24 +652,20 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
 ////////////////////////////////////////////
 // CHASE STATES AND TRANSITIONS
 ////////////////////////////////////////////
-state_functions[201] = set_global;
-T[201][SUCCESS] = 202; // should never fail
-T[201][FAIL] = 201; // but in case ...
-// you now have a sanitized heading vector stored globally
-// and all boundary + kick distance
-state_functions[202] = select_target; // big function
+state_functions[201] = start_up;
+T[201][SUCCESS] = 202; // set_global
+state_functions[202] = set_global;
 T[202][SUCCESS] = 203; // should never fail
-T[202][FAIL] = 202; // but in case ...
-// you now have a target, use a PID with ingenious obstacle avoidance
-state_functions[203] = get_to_target;
-T[203][SUCCESS] = 204; // reached target
-T[203][FAIL] = 203; // ball stationary but still failed
-T[203][BALL_MOVED] = 202;
-state_functions[204] = face_ball;
+// you now have a sanitized heading vector stored globally
+state_functions[203] = select_target;
+T[203][SUCCESS] = 204;
+state_functions[204] = get_to_target;
 T[204][SUCCESS] = 205;
-T[204][FAIL] = 204;
-T[204][BALL_MOVED] = 204;
-state_functions[205] = chase_finish;
+T[204][BALL_MOVED] = 203;
+state_functions[205] = face_ball;
+T[205][SUCCESS] = 206;
+T[205][BALL_MOVED] = 203;
+state_functions[206] = chase_finish;
 
 
 
@@ -941,7 +943,7 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
   }
   
   // Initialize BotInfo structures
-   
+   tempDPhead = ai->DPhead;
  }
  else
  {
@@ -964,10 +966,15 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
    the bot is supposed to be doing.
   *****************************************************************************/
   fprintf(stderr,"Just trackin'!\n");	// bot, opponent, and ball.
+  ai->DPhead=tempDPhead;
   track_agents(ai,blobs);		// Currently, does nothing but endlessly track
+  timeout_counter++;
   (*state_functions[ai->st.state]) (ai, blobs);
   update_global(ai);
-  // ai->DPhead = addVector(ai->DPhead, ai->st.self->cx, ai->st.self->cy, cleaned_mx, cleaned_my, 40, 255,0,0);
+  ai->DPhead = addVector(ai->DPhead, ai->st.self->cx, ai->st.self->cy, sanitized_dx, sanitized_dy, 200, 255,0,0);
+  // addVector(ai->DPhead, ai->st.self->cx, ai->st.self->cy, sanitized_dx, sanitized_dy, 200, 255,0,0);
+
+
 //   if (ai -> st.state == 1) {
 
 //   } else if (ai -> st.state == 101) {
@@ -1001,29 +1008,53 @@ void AI_main(struct RoboAI *ai, struct blob *blobs, void *state)
 ///////////////////////////////////////
 double find_angle(double x1, double y1, double x2, double y2)
 {
+  fprintf(stderr, "start find_angle \n");
   return atan2(x1*y2 - x2*y1, x1*x2 + y1*y2);
 }
 
-int is_ball_moving()
+int is_ball_moving(struct RoboAI *ai)
 {
+  fprintf(stderr, "start is_ball_moving? \n");
   double bx, by;
   if (ai->st.ball != NULL)
   {
-    bx = ai->st.ball.cx;
+    bx = ai->st.ball->cx;
     by = ai->st.ball->cy;
   } else {
     bx = ai->st.old_bcx;
     by = ai->st.old_bcy;
   }
-  return (abs(ball_x - bx) >= 10 || abs(ball_y - by) >= 10)
+
+  int is_moving = (abs(ball_x - bx) >= 10 || abs(ball_y - by) >= 10);
+  printf("is_moving: %d\n", is_moving);
+  return is_moving;
 }
+
+void start_up(struct RoboAI *ai, struct blob *blob)
+{
+  fprintf(stderr,"start start_up\n");
+
+  DRIVE_FORWARD
+  
+  if (!(ai->st.selfID)){
+    return;
+  }
+
+  if (ai->st.self->mx && ai->st.self->my){
+    BT_all_stop(1);
+    timeout_counter = 0;
+    // we found a motion vector, our heading vector should be in the direction of motion
+    sanitized_dx = ai->st.self->mx;
+    sanitized_dy = ai->st.self->my;
+    ai->st.state = T[ai->st.state][SUCCESS];
+  }
+}
+
+
 
 void set_global(struct RoboAI *ai, struct blob *blob)
 {
-  // move forward
-  BT_turn(MOTOR_A, -20, MOTOR_B, -20);
-  sleep(0.5); //TUNE
-  // now we have a motion direction to compare with
+  fprintf(stderr, "start set_global\n");
   double mx, my, dx, dy;
   if (ai->st.self != NULL)
   {
@@ -1060,24 +1091,22 @@ void set_global(struct RoboAI *ai, struct blob *blob)
 
 double norm(double x, double y)
 {
+  fprintf(stderr, "start norm \n");
   return sqrt(pow(x, 2)+pow(y, 2));
 }
 void update_global(struct RoboAI *ai)
 {
+  fprintf(stderr, "start update_global \n");
   // ned to update sanitized_dx, sanitized_dy, ball_x, ball_y
-  double mx, my, dx, dy;
+  double dx, dy;
   if (ai->st.self != NULL)
   {
-    mx = ai->st.self->mx;
-    my = ai->st.self->my;
     dx = ai->st.self->dx;
     dy = ai->st.self->dy;
     self_x = ai->st.self->cx;
     self_y = ai->st.self->cy;
   } 
   else {
-    mx = ai->st.smx;
-    my = ai->st.smy;
     dx = ai->st.sdx;
     dy = ai->st.sdy;
     self_x = ai->st.old_scx;
@@ -1093,6 +1122,22 @@ void update_global(struct RoboAI *ai)
     ball_y = ai->st.old_bcy;
   }
   // check dx dy value
+
+
+  // double dot = dx * sanitized_dx + dy * sanitized_dy;
+  // if (fabs(dot)<UPDATE_MX_MY_THRESHOLD) {
+  //   fprintf(stderr,"Noisy direction, we don't want it\n\n\n");
+  //   return;
+  // }
+  // if (dot > 0)
+  // {
+  //   sanitized_dx = ai->st.self->dx;
+  //   sanitized_dy = ai->st.self->dy;
+  // } else {
+  //   printf("Flipped heading dir");
+  //   sanitized_dx = -ai->st.self->dx;
+  //   sanitized_dy = -ai->st.self->dy;
+  // }
   if (abs(find_angle(sanitized_dx, sanitized_dy, dx, dy)) < 1.5)
   {
     sanitized_dx = dx;
@@ -1108,13 +1153,14 @@ void update_global(struct RoboAI *ai)
 // left  = 0, right  = 1
 void turn(int direction)
 {
+  fprintf(stderr, "start turn \n");
   if (direction)
   {
-    BT_turn(MOTOR_A, -20, MOTOR_D, 20);
+    BT_turn(MOTOR_A, 30, MOTOR_D, -30);
   }
   else
   {
-    BT_turn(MOTOR_A, 20, MOTOR_D, -20);
+    BT_turn(MOTOR_A, -30, MOTOR_D, 30);
   }
 }
 ///////////////////////////////////////
@@ -1124,11 +1170,16 @@ void select_target(struct RoboAI *ai, struct blob *blob)
 {
   // check if ball in a corner
   
+  fprintf(stderr, "start select_target \n");
+
   if ((ball_x < left_buffer || ball_x > (sx-right_buffer)) && (ball_y < top_buffer || ball_y > (sy - bottom_buffer)))
   {
     // set target as ball
     target_x = ball_x;
     target_y = ball_y;
+
+    left_motor_speed = INITIAL_MOTOR_SPEED_LEFT;
+    right_motor_speed = INITIAL_MOTOR_SPEED_RIGHT;
     ai->st.state = T[ai->st.state][SUCCESS];
   } else {
     double delta_x = ball_x - enemy_goal_x;
@@ -1141,12 +1192,16 @@ void select_target(struct RoboAI *ai, struct blob *blob)
       target_x = ball_x;
       target_y = ball_y;
     }
+
+    left_motor_speed = INITIAL_MOTOR_SPEED_LEFT;
+    right_motor_speed = INITIAL_MOTOR_SPEED_RIGHT;
     ai->st.state = T[ai->st.state][SUCCESS];
   }
 }
 
 double updateInt(struct RoboAI *ai, double curr_err)
 {
+  fprintf(stderr, "start updateInt \n");
   double sum = 0;
   for (int k = PID_TIME-1; k>0; k--)
   {
@@ -1159,6 +1214,7 @@ double updateInt(struct RoboAI *ai, double curr_err)
 
 void get_to_target(struct RoboAI *ai, struct blob *blob)
 {
+  fprintf(stderr, "start get_to_target \n");
   // Use PID to drive to target_x, target_y
   // Every frame, check if ball moved, and if so, transition to select_target
 
@@ -1166,14 +1222,16 @@ void get_to_target(struct RoboAI *ai, struct blob *blob)
   if (!(ai->st.selfID))
   {
     // Not really sure what we should do? maybe BT_all_stop();
+    fprintf(stderr, "Self ID doesn't exist\n");
     return;
   }
-  if (is_ball_moving())
+  
+  if (is_ball_moving(ai))
   {
     BT_all_stop(1);
     ai->st.state = T[ai->st.state][BALL_MOVED];
   }
-  else if (has_reached_target(ai))
+  else if (norm(self_x-ball_x, self_y-ball_y) < 50)
   {
     BT_all_stop(1);
     ai->st.state = T[ai->st.state][SUCCESS];
@@ -1186,39 +1244,44 @@ void get_to_target(struct RoboAI *ai, struct blob *blob)
     // but if we have time, change this so that it checks whether ball is within kick_distance
     // and change vector to target to be tangential to the direction to ball so you
     // drive along the circumference until you are clear to move forward
-    double vect2tgt_x = target_x - ai->st.self->cx;
-    double vect2tgt_y = target_y - ai->st.self->cy;
+    double vect2tgt_x = target_x - self_x;
+    double vect2tgt_y = target_y - self_y;
 
-    vect2tgt_x /= norm(vect2tgt_x, vect2tgt_y);
-    vect2tgt_y /= norm(vect2tgt_x, vect2tgt_y); 
+    // vect2tgt_x /= norm(vect2tgt_x, vect2tgt_y);
+    // vect2tgt_y /= norm(vect2tgt_x, vect2tgt_y); 
   
     double err = find_angle(sanitized_dx, sanitized_dy, vect2tgt_x, vect2tgt_y);
     // if error too big, stop moving and align yourself so that error is manageable
-    if (abs(err) >= 0.4)
-    {
-      // err < 0 means we need to turn right
-      turn((err<0));
-    }
-    else
-    {
+    // if (abs(err) >= 0.4)
+    // {
+    //   // err < 0 means we need to turn right
+    //   turn((err<0));
+    // }
+    // else
+    // {
       // PID here
       // also only use the P, we dont need the I or D
-      continue;
-    }
+      left_motor_speed += (int)err/PI*DRIVING_PID_THRESHOLD;
+      right_motor_speed -= (int)err/PI*DRIVING_PID_THRESHOLD;
+      fprintf(stderr, "left speed: %d, right speed:%d\n", left_motor_speed, right_motor_speed);
+      fprintf(stderr, "err: %f\n", err);
+    // }
+    BT_turn(MOTOR_A, right_motor_speed, MOTOR_D, left_motor_speed);
   }
   
 }
 
 void face_ball(struct RoboAI *ai, struct blob *blob)
 {
-  if (is_ball_moving())
+  fprintf(stderr, "start face_ball \n");
+  if (is_ball_moving(ai))
   {
-    ai->st.state = T[ai->st.state][BALL_MOVED]
+    ai->st.state = T[ai->st.state][BALL_MOVED];
   } else {
     double angle = find_angle(sanitized_dx, sanitized_dy, ball_x-self_x, ball_y-self_y);
-    if (abs(find_angle()) < 0.1)
+    if (abs(angle) < 0.1)
     {
-    ai->st.state = T[ai->st.state][SUCCESS]
+    ai->st.state = T[ai->st.state][SUCCESS];
     }
     else
     {
@@ -1226,6 +1289,11 @@ void face_ball(struct RoboAI *ai, struct blob *blob)
       turn((angle<0));
     }
   }
+}
+
+void chase_finish(struct RoboAI *ai, struct blob *blob)
+{
+  fprintf(stderr, "finished chase \n");
 }
 
 // double eval_implicit_line(double x, double y){
