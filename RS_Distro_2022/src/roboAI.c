@@ -1296,7 +1296,6 @@ void kick_finish(struct RoboAI *ai, struct blob *blob)
 
 void face_starting_angle(struct RoboAI *ai, struct blob *blob)
 {
-  // MALHAR
   fprintf(stderr,"state %d face_starting_angle\n", ai->st.state);
   double vect2tgt_x, vect2tgt_y;
   vect2tgt_x = 0;
@@ -1342,6 +1341,13 @@ void kickoff_head_to_center(struct RoboAI *ai, struct blob *blob)
   */
 
   //set target
+  /*
+  MESSAGE TO JACKSON: MAYBE DONT CALL THE GENERAL PID, WE HAVE A VERY SPECIFIC CURVE
+  WHAT IF WE MAKE A SPECIFIC MULTI STAGE PID: move straight till we get to decent speed/displacement,
+  then reset the left and right motor speed so that we have a baseline turn, let the PID fine tune it
+  then 3rd stage is reset the motor powers to be equal again, use the PID to FINE TUNE the base line curve
+  instead of giving it full control
+  */
   get_to_target(ai, blob);
 }
 
