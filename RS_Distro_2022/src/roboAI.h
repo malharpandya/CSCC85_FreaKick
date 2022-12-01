@@ -152,6 +152,17 @@ struct displayList *clearDP(struct displayList *head);
    playing functionality below.
 *****************************************************************************/
 
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+ 
+#define min(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _b : _a; })
+
+
 // Constants
 #define NUM_EVENTS 20
 #define PID_TIME 10
@@ -160,9 +171,18 @@ struct displayList *clearDP(struct displayList *head);
 // #define Kp 0.0001
 // #define Kd 0.000005
 // #define Ki 0.0000057
-#define Kp 0.0001
-#define Kd 0.000005
-#define Ki 0.0000057
+
+// #define Kp 1.0
+// #define Kd 25
+// #define Ki 0.09
+
+#define Kp 1.5
+#define Kd 25
+#define Ki 0.09
+
+#define Kp_KICKOFF 2.1
+#define Kd_KICKOFF 0
+#define Ki_KICKOFF 0
 
 // #define update_mx_my_threshold 10
 #define UPDATE_MX_MY_THRESHOLD 0.2
@@ -172,14 +192,24 @@ struct displayList *clearDP(struct displayList *head);
 // #define Kd 0.0000
 // #define Ki 0.0000001
 
-#define CHASE_BALL_THRESHOLD 150
+#define ARRIVE_THRESHOLD 50
 
 #define STOP_ROTATING_THRESHOLD 0.2// this is in radians
 
 #define timeout_threshold 25
 
-#define INITIAL_MOTOR_SPEED_LEFT -10
-#define INITIAL_MOTOR_SPEED_RIGHT -10
+#define INITIAL_MOTOR_SPEED_LEFT_KICKOFF -95
+#define INITIAL_MOTOR_SPEED_RIGHT_KICKOFF -75
+
+#define INITIAL_MOTOR_SPEED_LEFT -20
+#define INITIAL_MOTOR_SPEED_RIGHT -20
+
+#define INITIAL_MOTOR_SPEED_LEFT_KICK -80
+#define INITIAL_MOTOR_SPEED_RIGHT_KICK -69
+
+#define MOTOR_TURN_SPEED 15.0
+
+
 #define DRIVING_PID_THRESHOLD 10.0
 
 // Motion Controls
@@ -198,14 +228,21 @@ struct displayList *clearDP(struct displayList *head);
 #define BALL_MOVED 6
 #define DEFENSE 7
 #define TACKLE 8
+#define TIMEOUT 8
+
 
 void start_up(struct RoboAI *ai, struct blob *blob);
 void set_global(struct RoboAI *ai, struct blob *blob);
 void select_target(struct RoboAI *ai, struct blob *blob);
+void select_target_ball(struct RoboAI *ai, struct blob *blob);
 void get_to_target(struct RoboAI *ai, struct blob *blob);
 void face_ball(struct RoboAI *ai, struct blob *blob);
 void chase_finish(struct RoboAI *ai, struct blob *blob);
 void update_global(struct RoboAI *ai);
+void kick_finish(struct RoboAI *ai, struct blob *blob);
+
+
+void kick(struct RoboAI *ai, struct blob *blob);
 
 
 // void update_cleaned_mx_my(struct RoboAI *ai);
