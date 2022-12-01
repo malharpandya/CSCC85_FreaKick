@@ -172,13 +172,13 @@ struct displayList *clearDP(struct displayList *head);
 // #define Kd 0.000005
 // #define Ki 0.0000057
 
-// #define Kp 1.0
-// #define Kd 25
-// #define Ki 0.09
-
-#define Kp 1.5
+#define Kp 1.0
 #define Kd 25
 #define Ki 0.09
+
+// #define Kp 1.5
+// #define Kd 25
+// #define Ki 0.09
 
 #define Kp_KICKOFF 2.1
 #define Kd_KICKOFF 0
@@ -200,6 +200,8 @@ struct displayList *clearDP(struct displayList *head);
 
 #define INITIAL_MOTOR_SPEED_LEFT_KICKOFF -95
 #define INITIAL_MOTOR_SPEED_RIGHT_KICKOFF -75
+// #define INITIAL_MOTOR_SPEED_LEFT_KICKOFF -95
+// #define INITIAL_MOTOR_SPEED_RIGHT_KICKOFF -75
 
 #define INITIAL_MOTOR_SPEED_LEFT -20
 #define INITIAL_MOTOR_SPEED_RIGHT -20
@@ -209,6 +211,11 @@ struct displayList *clearDP(struct displayList *head);
 
 #define MOTOR_TURN_SPEED 15.0
 
+#define STARTING_LEFT_ANGLE_DELTA_X 0.0
+#define STARTING_LEFT_ANGLE_DELTA_Y 1.0
+
+#define STARTING_RIGHT_ANGLE_DELTA_X 0.0
+#define STARTING_RIGHT_ANGLE_DELTA_Y 1.0
 
 #define DRIVING_PID_THRESHOLD 10.0
 
@@ -243,6 +250,12 @@ void kick_finish(struct RoboAI *ai, struct blob *blob);
 
 
 void kick(struct RoboAI *ai, struct blob *blob);
+
+
+void face_starting_angle(struct RoboAI *ai, struct blob *blob);
+void kickoff_head_to_center(struct RoboAI *ai, struct blob *blob);
+void kickoff_kick(struct RoboAI *ai, struct blob *blob);
+void default_state(struct RoboAI *ai, struct blob *blob);
 
 
 // void update_cleaned_mx_my(struct RoboAI *ai);

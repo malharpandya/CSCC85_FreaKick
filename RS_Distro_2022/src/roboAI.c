@@ -658,6 +658,21 @@ T[103][SUCCESS] = 104;
 T[104][SUCCESS] = 105;
 T[105][SUCCESS] = 106;
 
+// ROBO SOCCER 
+state_functions[001] = set_global;
+state_functions[002] = start_up;
+state_functions[003] = face_starting_angle;
+state_functions[004] = kickoff_head_to_center;
+state_functions[005] = kickoff_kick;
+state_functions[006] = default_state;
+
+T[001][SUCCESS] = 002;
+T[002][SUCCESS] = 003;
+T[003][SUCCESS] = 004;
+T[004][SUCCESS] = 005;
+T[005][SUCCESS] = 006;
+
+
  fprintf(stderr,"Initialized!\n");
 
  return(1);
@@ -927,8 +942,8 @@ void start_up(struct RoboAI *ai, struct blob *blob)
   sanitized_dy = ai->st.self->my;
   ai->st.state = T[ai->st.state][SUCCESS];
 
-  left_motor_speed = INITIAL_MOTOR_SPEED_LEFT;
-  right_motor_speed = INITIAL_MOTOR_SPEED_RIGHT;
+  left_motor_speed = (ai->st.state < 100) ? INITIAL_MOTOR_SPEED_LEFT_KICKOFF : INITIAL_MOTOR_SPEED_LEFT;
+  right_motor_speed = (ai->st.state < 100) ? INITIAL_MOTOR_SPEED_RIGHT_KICKOFF : INITIAL_MOTOR_SPEED_RIGHT;
   // }
 }
 
@@ -1016,11 +1031,11 @@ void update_global(struct RoboAI *ai)
 }
 
 // left  = 0, right  = 1
-void turn(int direction, double angle)
+void turn(double angle)
 {
   double motor_turn_speed = max(20, MOTOR_TURN_SPEED * abs(angle));
   fprintf(stderr, "start turn \n");
-  if (direction)
+  if (angle > 0)
   {
     BT_turn(MOTOR_A, motor_turn_speed, MOTOR_D, -motor_turn_speed);
   }
@@ -1044,6 +1059,22 @@ void select_target(struct RoboAI *ai, struct blob *blob)
     target_x = ball_x;
     target_y = ball_y;
     target_threshold = kick_distance;
+  }
+  else if (ai->st.state == 0040)
+  {
+    // SET T1
+    double delta_x = ball_x - enemy_goal_x;
+    double delta_y = ball_y - enemy_goal_y;
+    double length = norm(delta_x, delta_y);
+    target_x = ball_x + delta_x*kick_distance/length;
+    target_y = ball_y + delta_y*kick_distance/length;
+    target_threshold = 400;
+  }
+  else if (ai->st.state == 005 || ai->st.state == 004)
+  {
+    // SET T2
+    target_x = enemy_goal_x;
+    target_y = enemy_goal_y;
   }
   else
   {
@@ -1179,7 +1210,7 @@ void face_ball(struct RoboAI *ai, struct blob *blob)
     else
     {
       // need to turn in place according to angle, stay in the same state
-      turn((angle)>0, angle);
+      turn(angle);
     }
   }
 }
@@ -1251,6 +1282,7 @@ void kick(struct RoboAI *ai, struct blob *blobs){
 
 void kick_finish(struct RoboAI *ai, struct blob *blob)
 {
+  fprintf(stderr,"state %d kick_finish\n", ai->st.state);
   left_motor_speed = INITIAL_MOTOR_SPEED_LEFT_KICK;
   right_motor_speed = INITIAL_MOTOR_SPEED_RIGHT_KICK;
   BT_all_stop(1);
@@ -1261,6 +1293,93 @@ void kick_finish(struct RoboAI *ai, struct blob *blob)
 // ////////////////////////////////////////////////////////////////////////////////////
 // // PLAY SOCCER LOGIC
 // ////////////////////////////////////////////////////////////////////////////////////
+
+void face_starting_angle(struct RoboAI *ai, struct blob *blob)
+{
+  // MALHAR
+  fprintf(stderr,"state %d face_starting_angle\n", ai->st.state);
+  double vect2tgt_x, vect2tgt_y;
+  vect2tgt_x = 0;
+  if (self_y < sy/2)
+  {
+    // align to 0, 1 (downwards)
+    vect2tgt_y = 1;
+  }
+  else
+  {
+    // align to 0, -1 (upwards)
+    vect2tgt_y = -1;
+  }
+  ai->DPhead = addVector(ai->DPhead, ai->st.self->cx, ai->st.self->cy, vect2tgt_x, vect2tgt_y, 200, 0,255,0);
+  double err = find_angle(sanitized_dx, sanitized_dy, vect2tgt_x, vect2tgt_y);
+  if (abs(err) < 0.2)
+  {
+    BT_all_stop(1);
+    ai->st.state = T[ai->st.state][SUCCESS];
+  }
+  else
+  {
+    turn(err);
+  }
+}
+
+void kickoff_head_to_center(struct RoboAI *ai, struct blob *blob)
+{
+  // JACKSON
+  fprintf(stderr,"state %d kickoff_head_to_center\n", ai->st.state);
+  if (!(ai->st.selfID && ai->st.ballID))
+  {
+    fprintf(stderr,"missing info: selfID or ballID\n");
+    return;
+  }
+  
+  // To do: add speed ramp up to stop skidding during launch
+  /*
+  int i = 0;
+  while(i <= 400) {
+    
+  }
+  */
+
+  //set target
+  get_to_target(ai, blob);
+}
+
+void kickoff_kick(struct RoboAI *ai, struct blob *blob)
+{
+  fprintf(stderr,"state %d kickoff_kick\n", ai->st.state);
+  if (!(ai->st.selfID))
+  {
+    fprintf(stderr,"missing info: selfID or ballID\n");
+    return;
+  }
+  get_to_target(ai, blob);
+}
+
+void default_state(struct RoboAI *ai, struct blob *blob)
+{
+  fprintf(stderr,"state %d default_state\n", ai->st.state);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // void initialize_soccer(struct RoboAI *ai, struct blob *blobs)
 // {
