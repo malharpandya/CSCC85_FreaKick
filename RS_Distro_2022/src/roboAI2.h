@@ -152,17 +152,6 @@ struct displayList *clearDP(struct displayList *head);
    playing functionality below.
 *****************************************************************************/
 
-#define max(a,b) \
-   ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-     _a > _b ? _a : _b; })
- 
-#define min(a,b) \
-   ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-     _a > _b ? _b : _a; })
-
-
 // Constants
 #define NUM_EVENTS 20
 #define PID_TIME 10
@@ -171,18 +160,9 @@ struct displayList *clearDP(struct displayList *head);
 // #define Kp 0.0001
 // #define Kd 0.000005
 // #define Ki 0.0000057
-
-#define Kp 1.0
-#define Kd 25
-#define Ki 0.09
-
-// #define Kp 1.5
-// #define Kd 25
-// #define Ki 0.09
-
-#define Kp_KICKOFF 2.1
-#define Kd_KICKOFF 0
-#define Ki_KICKOFF 0
+#define Kp 0.0001
+#define Kd 0.000005
+#define Ki 0.0000057
 
 // #define update_mx_my_threshold 10
 #define UPDATE_MX_MY_THRESHOLD 0.2
@@ -192,36 +172,13 @@ struct displayList *clearDP(struct displayList *head);
 // #define Kd 0.0000
 // #define Ki 0.0000001
 
-#define ARRIVE_THRESHOLD 50
+#define CHASE_BALL_THRESHOLD 150
 
 #define STOP_ROTATING_THRESHOLD 0.2// this is in radians
 
-#define timeout_threshold 25
-
-#define INITIAL_MOTOR_SPEED_LEFT_KICKOFF -95
-#define INITIAL_MOTOR_SPEED_RIGHT_KICKOFF -75
-// #define INITIAL_MOTOR_SPEED_LEFT_KICKOFF -95
-// #define INITIAL_MOTOR_SPEED_RIGHT_KICKOFF -75
-
-#define INITIAL_MOTOR_SPEED_LEFT -20
-#define INITIAL_MOTOR_SPEED_RIGHT -20
-
-#define INITIAL_MOTOR_SPEED_LEFT_KICK -80
-#define INITIAL_MOTOR_SPEED_RIGHT_KICK -69
-
-#define MOTOR_TURN_SPEED 15.0
-
-#define STARTING_LEFT_ANGLE_DELTA_X 0.0
-#define STARTING_LEFT_ANGLE_DELTA_Y 1.0
-
-#define STARTING_RIGHT_ANGLE_DELTA_X 0.0
-#define STARTING_RIGHT_ANGLE_DELTA_Y 1.0
-
-#define DRIVING_PID_THRESHOLD 10.0
-
 // Motion Controls
 
-#define DRIVE_FORWARD BT_turn(MOTOR_A, -100, MOTOR_D, -100);
+#define DRIVE_FORWARD BT_turn(MOTOR_A, 97, MOTOR_D, 100);
 #define TURN_ON_STOP_CW BT_turn(MOTOR_A, -50, MOTOR_D, 50);
 #define TURN_ON_STOP_CCW BT_turn(MOTOR_A, 50, MOTOR_D, -50);
 
@@ -235,73 +192,50 @@ struct displayList *clearDP(struct displayList *head);
 #define BALL_MOVED 6
 #define DEFENSE 7
 #define TACKLE 8
-#define TIMEOUT 8
 
+void update_cleaned_mx_my(struct RoboAI *ai);
 
-void start_up(struct RoboAI *ai, struct blob *blob);
-void set_global(struct RoboAI *ai, struct blob *blob);
-void select_target(struct RoboAI *ai, struct blob *blob);
-void select_target_ball(struct RoboAI *ai, struct blob *blob);
-void get_to_target(struct RoboAI *ai, struct blob *blob);
-void face_ball(struct RoboAI *ai, struct blob *blob);
-void chase_finish(struct RoboAI *ai, struct blob *blob);
-void update_global(struct RoboAI *ai);
-void kick_finish(struct RoboAI *ai, struct blob *blob);
+void move_forward(struct RoboAI *ai, struct blob *blobs); 
+void calculate_heading_direction_forward(struct RoboAI *ai, struct blob *blobs);
+void move_backward(struct RoboAI *ai, struct blob *blobs);
+void calculate_heading_direction_backward(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_ball(struct RoboAI *ai, struct blob *blobs);
 
-
-void kick(struct RoboAI *ai, struct blob *blob);
-
-
-void face_starting_angle(struct RoboAI *ai, struct blob *blob);
-void kickoff_head_to_center(struct RoboAI *ai, struct blob *blob);
-void kickoff_kick(struct RoboAI *ai, struct blob *blob);
-void default_state(struct RoboAI *ai, struct blob *blob);
-
-
-// void update_cleaned_mx_my(struct RoboAI *ai);
-
-// void move_forward(struct RoboAI *ai, struct blob *blobs); 
-// void calculate_heading_direction_forward(struct RoboAI *ai, struct blob *blobs);
-// void move_backward(struct RoboAI *ai, struct blob *blobs);
-// void calculate_heading_direction_backward(struct RoboAI *ai, struct blob *blobs);
-// void rotate_towards_ball(struct RoboAI *ai, struct blob *blobs);
-
-// void shift_to_rotate_mode_ccw(struct RoboAI *ai, struct blob *blobs);
-// void shift_to_rotate_mode_cw(struct RoboAI *ai, struct blob *blobs);
-// void rotate(struct RoboAI *ai, struct blob *blobs);
-// void rotate_180_towards_ball(struct RoboAI *ai, struct blob *blobs);
-// void move_towards_ball(struct RoboAI *ai, struct blob *blobs);
+void shift_to_rotate_mode_ccw(struct RoboAI *ai, struct blob *blobs);
+void shift_to_rotate_mode_cw(struct RoboAI *ai, struct blob *blobs);
+void rotate(struct RoboAI *ai, struct blob *blobs);
+void rotate_180_towards_ball(struct RoboAI *ai, struct blob *blobs);
+void move_towards_ball(struct RoboAI *ai, struct blob *blobs);
 
 
 
-// void move_forward_no_motion_direction(struct RoboAI *ai, struct blob *blobs);
-// void initiate_rotate_towards_ball(struct RoboAI *ai, struct blob *blobs);
-// void rotate_towards_ball_ccw(struct RoboAI *ai, struct blob *blobs);
-// void rotate_towards_ball_cw(struct RoboAI *ai, struct blob *blobs);
-// void initiate_drive_to_ball_pid(struct RoboAI *ai, struct blob *blobs);
-// void drive_to_ball_pid(struct RoboAI *ai, struct blob *blobs);
-// void arrived_at_chase_ball(struct RoboAI *ai, struct blob *blobs);
+void move_forward_no_motion_direction(struct RoboAI *ai, struct blob *blobs);
+void initiate_rotate_towards_ball(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_ball_ccw(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_ball_cw(struct RoboAI *ai, struct blob *blobs);
+void initiate_drive_to_ball_pid(struct RoboAI *ai, struct blob *blobs);
+void drive_to_ball_pid(struct RoboAI *ai, struct blob *blobs);
+void arrived_at_chase_ball(struct RoboAI *ai, struct blob *blobs);
 
 
 
-// void initialize_penalty_kick(struct RoboAI *ai, struct blob *blobs);
-// void arrived_at_ball(struct RoboAI *ai, struct blob *blobs);
-// void grab(struct RoboAI *ai, struct blob *blobs);
-// double find_angle_to_goal(struct RoboAI *ai);
-// void initiate_rotate_towards_goal(struct RoboAI *ai, struct blob *blobs);
-// void rotate_towards_goal_cw(struct RoboAI *ai, struct blob *blobs);
-// void rotate_towards_goal_ccw(struct RoboAI *ai, struct blob *blobs);
-// void kick(struct RoboAI *ai, struct blob *blobs);
+void initialize_penalty_kick(struct RoboAI *ai, struct blob *blobs);
+void arrived_at_ball(struct RoboAI *ai, struct blob *blobs);
+void grab(struct RoboAI *ai, struct blob *blobs);
+double find_angle_to_goal(struct RoboAI *ai);
+void initiate_rotate_towards_goal(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_goal_cw(struct RoboAI *ai, struct blob *blobs);
+void rotate_towards_goal_ccw(struct RoboAI *ai, struct blob *blobs);
+void kick(struct RoboAI *ai, struct blob *blobs);
 
-// void initialize_soccer(struct RoboAI *ai, struct blob *blobs);
-// void strategy_check(struct RoboAI *ai, struct blob *blobs);
-// void initialize_defense(struct RoboAI *ai, struct blob *blobs);
-// void move_to_intercept(struct RoboAI *ai, struct blob *blobs);
-// void slow_advance(struct RoboAI *ai, struct blob *blobs);
-// void clear_shot_check(struct RoboAI *ai, struct blob *blobs);
-// void initiate_dribble(struct RoboAI *ai, struct blob *blobs);
-// void dribble_kick(struct RoboAI *ai, struct blob *blobs);
-// void initialize_tackle(struct RoboAI *ai, struct blob *blobs);
-// void collision_detection(struct RoboAi *ai, struct blob *blobs);
-
+void initialize_soccer(struct RoboAI *ai, struct blob *blobs);
+void strategy_check(struct RoboAI *ai, struct blob *blobs);
+void initialize_defense(struct RoboAI *ai, struct blob *blobs);
+void move_to_intercept(struct RoboAI *ai, struct blob *blobs);
+void slow_advance(struct RoboAI *ai, struct blob *blobs);
+void clear_shot_check(struct RoboAI *ai, struct blob *blobs);
+void initiate_dribble(struct RoboAI *ai, struct blob *blobs);
+void dribble_kick(struct RoboAI *ai, struct blob *blobs);
+void initialize_tackle(struct RoboAI *ai, struct blob *blobs);
+void collision_detection(struct RoboAi *ai, struct blob *blobs);
 #endif
