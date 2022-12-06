@@ -163,7 +163,6 @@ struct displayList *clearDP(struct displayList *head);
 #define SUCCESS 7
 #define ATTACK 8
 #define DEFEND 9
-#define TACKLE 10
 #define RECALCULATE 11
 #define BALL_MOVED 12
 #define SELECT_TACTIC 13
@@ -186,16 +185,14 @@ void kickoff_kick(struct RoboAI *ai);
 void default_state(struct RoboAI *ai);
 void defend(struct RoboAI *ai);
 void attack(struct RoboAI *ai);
-void tackle(struct RoboAI *ai);
 void align_to_goal(struct RoboAI *ai);
 void align_to_ball(struct RoboAI *ai);
 void shoot(struct RoboAI *ai);
 void robosoccer_select_tactic(struct RoboAI *ai);
 int select_target(struct RoboAI *ai);
 void unstuck(struct RoboAI *ai);
-
 int ball_moved(struct RoboAI *ai);
 int check_is_stuck(struct RoboAI *ai);
-
+void stand_defend(struct RoboAI *ai);
 
 #endif

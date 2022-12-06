@@ -78,13 +78,13 @@ double penalty_ki = 0.09;
 // RoboSoccer Kickoff thresholds
 double kickoff_offset_threshold = 200;
 double kickoff_center_proximity_threshold = 50;
-double kickoff_kick_counter_threshold = 8;
+double kickoff_kick_counter_threshold = 7;
 double kickoff_kick_counter = 0;
 
 // motor powers for Kickoff
 // int kickoff_drive_left = -80, kickoff_drive_right = -80;
-int kickoff_drive_left = -40, kickoff_drive_right = -40;
-int kickoff_shoot_drive_left = -90, kickoff_shoot_drive_right = -90;
+int kickoff_drive_left = -80, kickoff_drive_right = -80;
+int kickoff_shoot_drive_left = -80, kickoff_shoot_drive_right = -80;
 
 // RoboSoccer KICKOFF PID stuff
 // double kickoff_kp = 35;
@@ -93,7 +93,7 @@ int kickoff_shoot_drive_left = -90, kickoff_shoot_drive_right = -90;
 // double kickoff_shoot_kp = 40;
 // double kickoff_shoot_kd = 5;
 // double kickoff_shoot_ki = 0.09;
-double kickoff_kp = 35;
+double kickoff_kp = 30;
 double kickoff_kd = 5;
 double kickoff_ki = 0.09;
 double kickoff_shoot_kp = 30;
@@ -114,9 +114,11 @@ double stuck_counter = 0;
 double stuck_counter_threshold = 20;
 double reverse_counter = 0;
 double reverse_counter_threshold = 5;
+double stand_counter = 0;
+double stand_counter_threshold = 15;
 
 // RoboSoccer PID stuff
-double vs_kp = 15;
+double vs_kp = 20;
 double vs_kd = 5;
 double vs_ki = 0.09;
 
@@ -124,7 +126,9 @@ double vs_ki = 0.09;
 int prev_state;
 
 // motor powers for Kickoff
-int vs_drive_left = -40, vs_drive_right = -40;
+int vs_drive_left = -60, vs_drive_right = -60;
+
+int vs_curve_left = -20, vs_curve_right = -20;
 
 // Flick
 int flick_counter = 0;
@@ -617,7 +621,7 @@ void id_bot(struct RoboAI *ai, struct blob *blobs)
 
   track_agents(ai, blobs); // Call the tracking function to find each agent
 
-  BT_drive(LEFT_MOTOR, RIGHT_MOTOR, -100); // Start forward motion to establish heading
+  BT_drive(LEFT_MOTOR, RIGHT_MOTOR, -30); // Start forward motion to establish heading
                                           // Will move for a few frames.
 
   if (ai->st.selfID == 1 && ai->st.self != NULL)
@@ -725,7 +729,6 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
   state_functions[104] = penalty_shoot;
   state_functions[105] = penalty_finish;
 
-  // Test tree
   T[101][PENALTY_TARGET_INFEASIBLE] = 101;
   T[101][PENALTY_TARGET_SELECTED] = 102;
   T[102][PENALTY_TARGET_REACHED] = 103;
@@ -739,28 +742,34 @@ int setupAI(int mode, int own_col, struct RoboAI *ai)
   state_functions[4] = robosoccer_select_tactic;
   state_functions[5] = attack;
   state_functions[9] = align_to_goal;
+  state_functions[12] = align_to_ball;
   state_functions[10] = shoot;
   state_functions[6] = defend;
   state_functions[7] = flick;
-  state_functions[8] = tackle;
-  // state_functions[11] = unstuck;
+  state_functions[11] = stand_defend;
 
   T[1][SUCCESS] = 4;
   T[2][SUCCESS] = 3;
   T[3][SUCCESS] = 4;
   T[4][ATTACK] = 5;
   T[4][DEFEND] = 6;
-  T[4][TACKLE] = 8;
   T[7][SUCCESS] = 4;
   T[5][SUCCESS] = 9;
-  T[6][SUCCESS] = 7;
-  T[8][SUCCESS] = 4;
+  T[6][FLICK] = 7;
+  T[6][SUCCESS] = 11;
   T[9][SUCCESS] = 10;
   T[10][SUCCESS] = 4;
 
   T[5][SELECT_TACTIC] = 4;
   T[6][SELECT_TACTIC] = 4;
   T[5][FLICK] = 7;
+  T[11][SUCCESS] = 12;
+  T[12][SUCCESS] = 10; 
+
+  // Tuning Tree:
+  // T[1][SUCCESS] = 2;
+  // T[2][SUCCESS] = 3;
+  // T[3][SUCCESS] = 105;
 
   fprintf(stderr, "Initialized!\n");
 
@@ -998,21 +1007,18 @@ void update_global(struct RoboAI *ai)
 
       if (!self_dx && !self_dy)
       {
-        self_dx = ai->st.self->mx;
-        self_dy = ai->st.self->my;
+        fprintf(stderr, "first\n\n\n\n\n\n");
+        int is_aligned = abs(find_angle(1, sx/2-self_x, sy/2-self_y, ai->st.self->dx, ai->st.self->dy)) < 1.5;
+        self_dx = is_aligned ? ai->st.self->dx : -ai->st.self->dx;
+        self_dy = is_aligned ? ai->st.self->dy : -ai->st.self->dy;
+        fprintf(stderr, "First Frame: self_dx: %f, self_dy: %f\n", self_dx, self_dy);
       }
       else
       {
-        if (abs(find_angle(1, prev_self_dx, prev_self_dy, ai->st.self->dx, ai->st.self->dy)) < 1.5)
-        {
-          self_dx = ai->st.self->dx;
-          self_dy = ai->st.self->dy;
-        }
-        else
-        {
-          self_dx = -ai->st.self->dx;
-          self_dy = -ai->st.self->dy;
-        }
+        int is_aligned = abs(find_angle(1, prev_self_dx, prev_self_dy, ai->st.self->dx, ai->st.self->dy)) < 1.5;
+        self_dx = is_aligned ? ai->st.self->dx : -ai->st.self->dx;
+        self_dy = is_aligned ? ai->st.self->dy : -ai->st.self->dy;
+        fprintf(stderr, "self_dx: %f, self_dy: %f\n", self_dx, self_dy);
       }
       fprintf(stderr, "the robot is facing: %f, %f\n", self_dx, self_dy);
     }
@@ -1241,59 +1247,113 @@ void kickoff_setup(struct RoboAI *ai)
   double length = norm(1, delta_x, delta_y);
   target_x = ball_x + delta_x * kickoff_offset_threshold / length;
   target_y = ball_y + delta_y * kickoff_offset_threshold / length;
+  double desired_heading_x;
+  double desired_heading_y;
 
-  ai->st.state = T[ai->st.state][SUCCESS];
-}
-
-void kickoff_head_to_center(struct RoboAI *ai)
-{
-  // the penalty PID can be slow, theres no race to get the ball
-  // assumes the path to target will not move the ball
-  ERROR_FLAG = 0;
-  // set the target
-  double delta_x = self_x - ball_x; //ball_x - enemy_goal_x;
-  double delta_y = self_y - ball_y; //ball_y - sy / 2;
-  double length = norm(1, delta_x, delta_y);
-  target_x = ball_x + delta_x * kickoff_offset_threshold / length;
-  target_y = ball_y + delta_y * kickoff_offset_threshold / length;
-
-
-  if (norm(1, target_x - self_x, target_y - self_y) <= kickoff_center_proximity_threshold)
-  {
-    // reached target
-    fprintf(stderr, "Target reached, proceeding to align with the goal\n");
-    ai->st.state = T[ai->st.state][SUCCESS];
-    return;
+  if ((self_x < (sx / 2.0) && self_y < (sy / 2.0)) || (self_x >= (sx / 2.0) && self_y < (sy / 2.0)))
+  { // Top left or top right
+    desired_heading_x = 0;
+    desired_heading_y = 1;
   }
   else
   {
-    // find vector to target, and angle (error) wrt to currrent motion direction
-    double vec2tgt_x = target_x - self_x;
-    double vec2tgt_y = target_y - self_y;
-    ai->DPhead = addVector(ai->DPhead, self_x, self_y, vec2tgt_x, vec2tgt_y, 200, 0, 255, 0); // Vector to target
-    ai->DPhead = addVector(ai->DPhead, self_x, self_y, enemy_goal_x - self_x, (sy / 2) - self_y, 1000, 255, 255, 0);
-    double curr_err = find_angle(1, self_dx, self_dy, vec2tgt_x, vec2tgt_y);
-    double delta_err = curr_err - prev_err;
-    double int_err = updateInt(1, ai, curr_err);
-    prev_err = curr_err;
-
-    // PID HERE (MORE FINE TUNED THAN THE PLAY SOCCER ONE) @JACKON fix plz
-    fprintf(stderr, "kickoff_head_to_center PID: e: %f de: %f, integral e: %f\n", curr_err, delta_err, int_err);
-    double u = kickoff_kp * curr_err + kickoff_kd * delta_err + kickoff_ki * int_err; // error b/w -pi and pi
-    fprintf(stderr, "pid result u: %f\n", u);
-
-    // double temp = u > -30 ? u : -30;
-    // u = 30 > temp ? temp : 30;
-    // penalty_drive_left -= u;
-    // penalty_drive_right += u;
-    // penalty_drive_left = std::fmin(100, std::fmax(-100, penalty_drive_left));
-    // penalty_drive_right = std::fmin(100, std::fmax(-100, penalty_drive_right));
-    // fprintf(stderr, "left_motor_speed: %d right_motor_speed: %d\n", penalty_drive_left, penalty_drive_right);
-    double drive_left = std::fmin(100.0, std::fmax(-100.0, kickoff_drive_left - u));
-    double drive_right = std::fmin(100.0, std::fmax(-100.0, kickoff_drive_right + u));
-    fprintf(stderr, "left_motor_speed: %f right_motor_speed: %f\n", drive_left, drive_right);
-    BT_turn(MOTOR_D, drive_left, MOTOR_A, drive_right);
+    desired_heading_x = 0;
+    desired_heading_y = -1;
   }
+  
+  double angle = find_angle(0, self_dx, self_dy, desired_heading_x, desired_heading_y);
+  int turn_power = std::max(17.0, abs(30 * angle));
+  printf("Angle: %f\n", angle);
+  printf("turn_power: %d\n", turn_power);
+  if (angle > 0.30)
+  {
+    // Turn CCW
+    BT_turn(MOTOR_D, -turn_power, MOTOR_A, turn_power);
+    return;
+  }
+  else if (angle < -0.30)
+  {
+    // Turn CW
+    BT_turn(MOTOR_D, turn_power, MOTOR_A, -turn_power);
+    return;
+  }
+
+  BT_all_stop(1);
+  ai->st.state = T[ai->st.state][SUCCESS];
+
+  // if (angle > 0.20)
+  // {
+  //   // Turn CCW
+  //   BT_turn(MOTOR_D, -40, MOTOR_A, 40);
+  // }
+  // else if (angle < -0.20)
+  // {
+  //   // Turn CW
+  //   BT_turn(MOTOR_D, 40, MOTOR_A, -40);
+  // }
+  // else // If angle is not within 0.15 rads, this entire state will be called repeatedly 
+  // {
+  //   BT_all_stop(1);
+  //   ai->st.state = T[ai->st.state][SUCCESS];
+  // }
+}
+
+  void kickoff_head_to_center(struct RoboAI * ai)
+  {
+    // the penalty PID can be slow, theres no race to get the ball
+    // assumes the path to target will not move the ball
+    ERROR_FLAG = 0;
+    // set the target
+    double delta_x = self_x - ball_x; // ball_x - enemy_goal_x;
+    double delta_y = self_y - ball_y; // ball_y - sy / 2;
+    double length = norm(1, delta_x, delta_y);
+    target_x = ball_x + delta_x * kickoff_offset_threshold / length;
+    target_y = ball_y + delta_y * kickoff_offset_threshold / length;
+
+    delta_x = ball_x - enemy_goal_x;
+    delta_y = ball_y - sy / 2.0;
+    length = norm(1, delta_x, delta_y);
+    target_x += ball_x + delta_x * 50 / length;
+    target_y += ball_y + delta_y * 50 / length;
+    target_x /= 2;
+    target_y /= 2;
+
+    if (norm(1, target_x - self_x, target_y - self_y) <= kickoff_center_proximity_threshold)
+    {
+      // reached target
+      fprintf(stderr, "Target reached, proceeding to align with the goal\n");
+      ai->st.state = T[ai->st.state][SUCCESS];
+      return;
+    }
+    else
+    {
+      // find vector to target, and angle (error) wrt to current motion direction
+      double vec2tgt_x = target_x - self_x;
+      double vec2tgt_y = target_y - self_y;
+      ai->DPhead = addVector(ai->DPhead, self_x, self_y, vec2tgt_x, vec2tgt_y, 200, 0, 255, 0); // Vector to target
+      ai->DPhead = addVector(ai->DPhead, self_x, self_y, enemy_goal_x - self_x, (sy / 2) - self_y, 1000, 255, 255, 0);
+      double curr_err = find_angle(1, self_dx, self_dy, vec2tgt_x, vec2tgt_y);
+      double delta_err = curr_err - prev_err;
+      double int_err = updateInt(1, ai, curr_err);
+      prev_err = curr_err;
+
+      // PID HERE (MORE FINE TUNED THAN THE PLAY SOCCER ONE) @JACKON fix plz
+      fprintf(stderr, "kickoff_head_to_center PID: e: %f de: %f, integral e: %f\n", curr_err, delta_err, int_err);
+      double u = kickoff_kp * curr_err + kickoff_kd * delta_err + kickoff_ki * int_err; // error b/w -pi and pi
+      fprintf(stderr, "pid result u: %f\n", u);
+
+      // double temp = u > -30 ? u : -30;
+      // u = 30 > temp ? temp : 30;
+      // penalty_drive_left -= u;
+      // penalty_drive_right += u;
+      // penalty_drive_left = std::fmin(100, std::fmax(-100, penalty_drive_left));
+      // penalty_drive_right = std::fmin(100, std::fmax(-100, penalty_drive_right));
+      // fprintf(stderr, "left_motor_speed: %d right_motor_speed: %d\n", penalty_drive_left, penalty_drive_right);
+      double drive_left = std::fmin(100.0, std::fmax(-100.0, kickoff_drive_left - u));
+      double drive_right = std::fmin(100.0, std::fmax(-100.0, kickoff_drive_right + u));
+      fprintf(stderr, "left_motor_speed: %f right_motor_speed: %f\n", drive_left, drive_right);
+      BT_turn(MOTOR_D, drive_left, MOTOR_A, drive_right);
+    }
 }
 
 void kickoff_kick(struct RoboAI *ai)
@@ -1304,7 +1364,7 @@ void kickoff_kick(struct RoboAI *ai)
 
   // set the target
   target_x = enemy_goal_x;
-  target_y = sy / 2;
+  target_y = sy / 2 + (self_y < sy/2 ? -50 : 50);
 
   // the penalty PID can be slow, theres no race to get the ball
   // assumes the path to target will not move the ball
@@ -1357,12 +1417,6 @@ int defend_mode(struct RoboAI *ai){
   return (enemy_goal_x==0) ? (ball_x-self_x>=0):(self_x-ball_x>=0);
 }
 
-int tackle_mode(struct RoboAI *ai){
-  double enemy_dist = norm(1, ball_x-enemy_x, ball_y-enemy_y);
-  double self_dist = norm(1, ball_x-self_x, ball_y-self_y);
-  return defend_mode(ai) && (self_dist/enemy_dist>=1.5 && self_dist >= 500);
-}
-
 void robosoccer_select_tactic(struct RoboAI *ai)
 {
   printf("Selecting tactic\n");
@@ -1392,18 +1446,8 @@ void robosoccer_select_tactic(struct RoboAI *ai)
     double self_dist = norm(1, ball_x-self_x, ball_y-self_y);
     // we need to be relatively far away from the ball than the enemy
     // so check relative distance to ball, and absolute dist to ball
-    if (tackle_mode(ai))
-    {
-      ai->st.state = T[ai->st.state][DEFEND];
-    }
-    else
-    {
-      // we are close enough to the ball or closer to the ball than the enemy
-      // go to tackle mode
-      ai->st.state = T[ai->st.state][DEFEND];
-      // ai->st.state = T[ai->st.state][TACKLE];
-    }
-
+    ai->st.state = T[ai->st.state][DEFEND];
+    // ai->st.state = T[ai->st.state][TACKLE];
   }
   else
   {
@@ -1435,7 +1479,7 @@ int select_target(struct RoboAI *ai){
   return returnValue;
 }
 
-int get_to_target(struct RoboAI *ai, double target_threshold){
+int get_to_target(struct RoboAI *ai, double target_threshold, int mode){
   // if 
   if (norm(1, target_x - self_x, target_y - self_y) <= target_threshold)
   {
@@ -1461,8 +1505,8 @@ int get_to_target(struct RoboAI *ai, double target_threshold){
     double u = vs_kp * curr_err + vs_kd * delta_err + vs_ki * int_err; // error b/w -pi and pi
     fprintf(stderr, "pid result u: %f\n", u);
     
-    double drive_left = std::fmin(100.0, std::fmax(-100.0, vs_drive_left - u));
-    double drive_right = std::fmin(100.0, std::fmax(-100.0, vs_drive_right + u));
+    double drive_left = std::fmin(100.0, std::fmax(-100.0, ((mode == 1) ? vs_curve_left : vs_drive_left) - u));
+    double drive_right = std::fmin(100.0, std::fmax(-100.0, ((mode == 1) ? vs_curve_right : vs_drive_right) + u));
     fprintf(stderr, "left_motor_speed: %f right_motor_speed: %f\n", drive_left, drive_right);
     BT_turn(MOTOR_D, drive_left, MOTOR_A, drive_right);
     return 0;
@@ -1487,13 +1531,18 @@ void attack(struct RoboAI *ai)
   //   return;
   // }
   // need to check if enemy in the way of getting to the target
-  double distance_from_enemy = abs((ball_x-self_x)*(self_y-enemy_y)-(self_x-enemy_x)*(enemy_y-self_y))/norm(0, ball_x-self_x, ball_y-self_y);
-  if (distance_from_enemy < 200 && norm(0, enemy_x-self_x, enemy_y-self_y) < 300)
+  int too_close_to_enemy = norm(0, enemy_x-self_x, enemy_y-self_y) < 300;
+  int enemy_in_the_way = (ball_x > self_x && enemy_x > self_x && enemy_x < ball_x);
+  enemy_in_the_way = enemy_in_the_way || (self_x > ball_x && enemy_x > ball_x && enemy_x < self_x);
+  double shortest_dist_to_enemy_on_way_to_target = abs((ball_x-self_x)*(self_y-enemy_y)-(self_x-enemy_x)*(ball_y-self_y))/norm(0, ball_x-self_x, ball_y-self_y);
+  enemy_in_the_way = enemy_in_the_way && (shortest_dist_to_enemy_on_way_to_target < 200);
+  if (too_close_to_enemy && enemy_in_the_way)
   {
     // TODO don't change states
     // curve around the enemy
-    double tangent_y = enemy_y-self_y;
-    double tangent_x = self_x-enemy_y;
+    fprintf(stderr,"Curving\n\n\n\n");
+    double tangent_x = enemy_y-self_y;
+    double tangent_y = self_x-enemy_x;
     if(self_y>sy/2)
     {
       tangent_y *= -1;
@@ -1504,19 +1553,19 @@ void attack(struct RoboAI *ai)
     tangent_y/=length;
     target_x = self_x+300*tangent_x;
     target_y = self_y+300*tangent_y;
-    get_to_target(ai, 100);
-    ai->st.state = T[ai->st.state][RECALCULATE];
+    get_to_target(ai, 100, 1);
+    // ai->st.state = T[ai->st.state][RECALCULATE];
     return;
   }
   else
   {
     int flick = select_target(ai);
     if (flick){
-      if (get_to_target(ai, flick_distance)){
+      if (get_to_target(ai, flick_distance, 0)){
         ai->st.state = T[ai->st.state][FLICK];
       }
     } else {
-      if (get_to_target(ai, vs_proximity_threshold)){
+      if (get_to_target(ai, vs_proximity_threshold, 0)){
         ai->st.state = T[ai->st.state][SUCCESS];
       }
     }
@@ -1613,42 +1662,45 @@ void defend(struct RoboAI *ai)
   int got_to_target;
   fprintf(stderr,"state %d defend\n", ai->st.state);
   fprintf(stderr,"defend mode %d\n", defend_mode(ai));
-  fprintf(stderr,"tackle_mode %d\n", tackle_mode(ai));
-  // if (!(defend_mode(ai)||tackle_mode(ai))){
+  fprintf(stderr,"attack mode %d\n", attack_mode(ai));
 if (attack_mode(ai)){
     ai->st.state = T[ai->st.state][SELECT_TACTIC];
     return;
   }
   if (check_is_stuck(ai)) {return;};
-  // if (abs(self_y-ball_y) < 200)
-  // {
-  //   // run to own goal
-  //   target_x = sx-enemy_goal_x;
-  //   target_y = sy/2;
-  // }
-  // else
-  // {
+  if (abs(self_y-ball_y) >= 150)
+  {
+    // run to intercept (don't go to own goal)
+    target_x = ((sx-enemy_goal_x) + ball_x)/2;
+    target_y = (sy/2 + ball_y)/2;
+  }
+  else
+  {
     // prepare for flick
     target_x = ball_x;
     target_y = ball_y;
-  // }
-  if(get_to_target(ai, flick_distance))
+  }
+  if(get_to_target(ai, 175, 0))
   {
     BT_all_stop(1);
-    ai->st.state = T[ai->st.state][SUCCESS];
+    if (abs(self_y-ball_y) >= 150)
+    {
+      ai->st.state = T[ai->st.state][SUCCESS];
+    } else {
+      ai->st.state = T[ai->st.state][FLICK];
+    }
   }
 }
 
-void tackle(struct RoboAI *ai)
+void stand_defend(struct RoboAI *ai)
 {
-  fprintf(stderr,"state %d tackling\n", ai->st.state);
-  // Collision detection
-  // Calculate target where the ball is in between the target and the enemy goal
-  // Get to  
-  // Choose target (target will be ball if ball is too close to wall)
-  // Get to the ball
-  // Flick if the target is the ball
-  ai->st.state = T[ai->st.state][SUCCESS];
+  fprintf(stderr,"state %d stand_defend\n", ai->st.state);
+  stand_counter += 1;
+  if (ball_moved(ai) || stand_counter >= stand_counter_threshold)
+  {
+    stand_counter = 0;
+    ai->st.state = T[ai->st.state][SUCCESS];
+  }
 }
 
 void flick(struct RoboAI *ai)
@@ -1677,6 +1729,7 @@ void flick(struct RoboAI *ai)
     BT_turn(MOTOR_D, -100, MOTOR_A, 100);
     printf("Flicking CW\n");
   }
+
   printf("Self Y: %f, Ball Y: %f, Our net X: %f\n", self_y, ball_y, (sx - enemy_goal_x));
 
   flick_counter++;
@@ -1684,7 +1737,7 @@ void flick(struct RoboAI *ai)
 
 int check_is_stuck(struct RoboAI *ai)
 {
-  fprintf(stderr,"Running unstuck()\n");
+  fprintf(stderr,"Running check_is_stuck()\n");
   if (stuck_counter > stuck_counter_threshold)
   {
     // Reverse for a little bit of time
@@ -1703,35 +1756,10 @@ int check_is_stuck(struct RoboAI *ai)
   }
 
   // Check if we are stuck and increment stuck_counter if so
-  if (abs(self_x - prev_self_x) < 10 && abs(self_y - prev_self_y) < 10) {
+  if (abs(self_x - prev_self_x) < 5 && abs(self_y - prev_self_y) < 5) {
     stuck_counter++;
   } else {
     stuck_counter = 0;
   }
   return 0;
 }
-
-// void unstuck(struct RoboAI *ai) {
-//   printf("Running unstuck()\n");
-//   if (stuck_counter > stuck_counter_threshold)
-//   {
-//     // Reverse for a little bit of time
-//     if (reverse_counter > reverse_counter_threshold) {
-//       BT_all_stop(1);
-//       reverse_counter = 0;
-//       stuck_counter = 0;
-//       ai->st.state = T[ai->st.state][SUCCESS];
-//       return;
-//     }
-
-//     BT_turn(MOTOR_D, 100, MOTOR_A, 100);
-//     reverse_counter++;
-//   }
-
-//   // Check if we are stuck and increment stuck_counter if so
-//   if (abs(self_x - prev_self_x) < 10 && abs(self_y - prev_self_y) < 10) {
-//     stuck_counter++;
-//   } else {
-//     stuck_counter = 0;
-//   }
-// }
