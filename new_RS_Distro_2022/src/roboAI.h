@@ -36,7 +36,7 @@
 #define AI_CHASE 2 	    // Kick the ball around and chase it!
 
 #define NOISE_VAR 5.0                   // Minimum amount of displacement considered NOT noise (in pixels).
-#define PID_TIME 10
+#define PID_TIME 5
 
 struct AI_data{
 	// This data structure is used to hold all data relevant to the state of the AI.
@@ -194,5 +194,7 @@ void unstuck(struct RoboAI *ai);
 int ball_moved(struct RoboAI *ai);
 int check_is_stuck(struct RoboAI *ai);
 void stand_defend(struct RoboAI *ai);
+double norm(int mode, double x, double y);
+int go_around(struct RoboAI *ai);
 
 #endif
